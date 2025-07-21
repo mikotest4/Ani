@@ -17,12 +17,15 @@ class TorDownloader:
         if torrent.startswith("magnet:"):
             torp = TorrentDownloader(torrent, self.__downdir)
             await torp.start_download()
-            return ospath.join(self.__downdir, name)
+            # Get the actual downloaded file name from torrent info
+            actual_name = torp._torrent_info._info.name()
+            return ospath.join(self.__downdir, actual_name)
         elif torfile := await self.get_torfile(torrent):
             torp = TorrentDownloader(torfile, self.__downdir)
             await torp.start_download()
             await aioremove(torfile)
-            return ospath.join(self.__downdir, torp._torrent_info._info.name())
+            actual_name = torp._torrent_info._info.name()
+            return ospath.join(self.__downdir, actual_name)
 
     @handle_logs
     async def get_torfile(self, url):
@@ -40,4 +43,3 @@ class TorDownloader:
                             await file.write(chunk)
                     return des_dir
         return None
-        
