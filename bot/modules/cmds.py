@@ -1,4 +1,5 @@
 from asyncio import sleep as asleep, gather
+from urllib.parse import parse_qs, urlparse, unquote
 from pyrogram.filters import command, private, user
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from pyrogram.errors import FloodWait, MessageNotModified
@@ -96,7 +97,7 @@ async def add_task(client, message):
     if len(args := message.text.split()) <= 1:
         return await sendMessage(message, "<b>No Link Found to Add</b>")
     
-    Var.RSS_ITEMS.append(args[0])
+    Var.RSS_ITEMS.append(args[1])
     req_msg = await sendMessage(message, f"`Global Link Added Successfully!`\n\n    • **All Link(s) :** {', '.join(Var.RSS_ITEMS)[:-2]}")
 
 @bot.on_message(command('addtask') & private & user(Var.ADMINS))
@@ -111,3 +112,31 @@ async def add_task(client, message):
     
     ani_task = bot_loop.create_task(get_animes(taskInfo.title, taskInfo.link, True))
     await sendMessage(message, f"<i><b>Task Added Successfully!</b></i>\n\n    • <b>Task Name :</b> {taskInfo.title}\n    • <b>Task Link :</b> {args[1]}")
+
+@bot.on_message(command('addmagnet') & private & user(Var.ADMINS))
+@new_task
+async def add_magnet_task(client, message):
+    if len(args := message.text.split(maxsplit=1)) <= 1:
+        return await sendMessage(message, "<b>No Magnet Link Found to Add</b>")
+    
+    magnet_link = args[1]
+    
+    # Extract name from magnet link
+    try:
+        parsed = parse_qs(urlparse(magnet_link).query)
+        anime_name = unquote(parsed['dn'][0]) if 'dn' in parsed else "Unknown Anime"
+    except:
+        anime_name = "Unknown Anime"
+    
+    # Send confirmation message
+    confirmation_msg = f"""✅ **Magnet Task Added!**
+
+🔸 **Name:** `{anime_name}`
+
+🧲 **Magnet:** `{magnet_link[:50]}...`"""
+    
+    await sendMessage(message, confirmation_msg)
+    
+    # Start processing the anime
+    ani_task = bot_loop.create_task(get_animes(anime_name, magnet_link, True))
+    await sendMessage(message, f"<i><b>Processing Started!</b></i>\n\n    • <b>Task Name :</b> {anime_name}")
