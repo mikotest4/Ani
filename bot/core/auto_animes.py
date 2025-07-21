@@ -21,7 +21,7 @@ btn_formatter = {
     '1080':'𝟭𝟬𝟴𝟬𝗽', 
     '720':'𝟳𝟮𝟬𝗽',
     '480':'𝟰𝟴𝟬𝗽',
-    'HDRip':'HDRip'
+    'Hdrip':'HDRip'
 }
 
 async def fetch_animes():
