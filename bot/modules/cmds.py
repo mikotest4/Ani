@@ -16,7 +16,7 @@ async def start_msg(client, message):
     uid = message.from_user.id
     from_user = message.from_user
     txtargs = message.text.split()
-    temp = await sendMessage(message, "<i>Connecting..</i>")
+    temp = await sendMessage(message, "<b>ᴄᴏɴɴᴇᴄᴛɪɴɢ..</ib")
     if not await is_fsubbed(uid):
         txt, btns = await get_fsubs(uid, txtargs)
         return await editMessage(temp, txt, InlineKeyboardMarkup(btns))
@@ -49,42 +49,42 @@ async def start_msg(client, message):
         arg = (await decode(txtargs[1])).split('-')
     except Exception as e:
         await rep.report(f"User : {uid} | Error : {str(e)}", "error")
-        await editMessage(temp, "<b>Input Link Code Decode Failed !</b>")
+        await editMessage(temp, "<b>ɪɴᴘᴜᴛ ʟɪɴᴋ ᴄᴏᴅᴇ ᴅᴇᴄᴏᴅᴇ ғᴀɪʟᴇᴅ !</b>")
         return
     if len(arg) == 2 and arg[0] == 'get':
         try:
             fid = int(int(arg[1]) / abs(int(Var.FILE_STORE)))
         except Exception as e:
             await rep.report(f"User : {uid} | Error : {str(e)}", "error")
-            await editMessage(temp, "<b>Input Link Code is Invalid !</b>")
+            await editMessage(temp, "<b>ɪɴᴘᴜᴛ ʟɪɴᴋ ᴄᴏᴅᴇ ɪs ɪɴᴠᴀʟɪᴅ !</b>")
             return
         try:
             msg = await client.get_messages(Var.FILE_STORE, message_ids=fid)
             if msg.empty:
-                return await editMessage(temp, "<b>File Not Found !</b>")
+                return await editMessage(temp, "<b>ғɪʟᴇ ɴᴏᴛ ғᴏᴜɴᴅ !</b>")
             nmsg = await msg.copy(message.chat.id, reply_markup=None)
             await temp.delete()
             if Var.AUTO_DEL:
                 async def auto_del(msg, timer):
                     await asleep(timer)
                     await msg.delete()
-                await sendMessage(message, f'<i>File will be Auto Deleted in {convertTime(Var.DEL_TIMER)}, Forward to Saved Messages Now..</i>')
+                await sendMessage(message, f'<b>ғɪʟᴇ ᴡɪʟʟ ʙᴇ ᴅᴇʟᴇᴛᴇᴅ ɪɴ {convertTime(Var.DEL_TIMER)},  ғᴏʀᴡᴏʀᴅ ᴛᴏ sᴀᴠᴇᴅ ᴍᴇssᴀɢᴇs ɴᴏᴡ ..</b>')
                 bot_loop.create_task(auto_del(nmsg, Var.DEL_TIMER))
         except Exception as e:
             await rep.report(f"User : {uid} | Error : {str(e)}", "error")
-            await editMessage(temp, "<b>File Not Found !</b>")
+            await editMessage(temp, "<b>ғɪʟᴇ ɴᴏᴛ ғᴏᴜɴᴅ !</b>")
     else:
-        await editMessage(temp, "<b>Input Link is Invalid for Usage !</b>")
+        await editMessage(temp, "<b>ɪɴᴘᴜᴛ ʟɪɴᴋ ɪs ɪɴᴠᴀʟɪᴅ ғᴏʀ ᴜsᴀɢᴇ !</b>")
     
 @bot.on_message(command('pause') & private & user(Var.ADMINS))
 async def pause_fetch(client, message):
     ani_cache['fetch_animes'] = False
-    await sendMessage(message, "`Successfully Paused Fetching Animes...`")
+    await sendMessage(message, "<b>sᴜᴄᴄᴇssғᴜʟʟʏ ᴘᴀᴜsᴇᴅ ғᴇᴛᴄʜɪɴɢ ᴀɴɪᴍᴇ...</b>")
 
 @bot.on_message(command('resume') & private & user(Var.ADMINS))
 async def pause_fetch(client, message):
     ani_cache['fetch_animes'] = True
-    await sendMessage(message, "`Successfully Resumed Fetching Animes...`")
+    await sendMessage(message, "<b>sᴜᴄᴄᴇssғᴜʟʟʏ ʀᴇsᴜᴍᴇᴅ ғᴇᴛᴄʜɪɴɢ ᴀɴɪᴍᴇ...</b>")
 
 @bot.on_message(command('log') & private & user(Var.ADMINS))
 @new_task
