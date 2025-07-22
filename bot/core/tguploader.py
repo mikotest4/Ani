@@ -27,7 +27,7 @@ class TgUploader:
                 return await self.__client.send_document(chat_id=Var.FILE_STORE,
                     document=path,
                     thumb="thumb.jpg" if ospath.exists("thumb.jpg") else None,
-                    caption=f"<code>{self.__name}</code>",
+                    caption=f"<b>{self.__name}</b>",
                     force_document=True,
                     progress=self.progress_status
                 )
@@ -35,7 +35,7 @@ class TgUploader:
                 return await self.__client.send_video(chat_id=Var.FILE_STORE,
                     document=path,
                     thumb="thumb.jpg" if ospath.exists("thumb.jpg") else None,
-                    caption=f"<code>{self.__name}</code>",
+                    caption=f"<b>{self.__name}</b>",
                     progress=self.progress_status
                 )
         except FloodWait as e:
