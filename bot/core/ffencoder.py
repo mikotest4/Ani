@@ -51,7 +51,7 @@ class FFEncoder:
     
                 bar = floor(percent/8)*"█" + (12 - floor(percent/8))*"▒"
                 
-                progress_str = f"""<b>ᴀɴɪᴍᴇ ɴᴀᴍᴇ :</b> <code>{self.__name}</code>
+                progress_str = f"""<b>ᴀɴɪᴍᴇ ɴᴀᴍᴇ :</b> <b>{self.__name}</b>
 
 <blockquote>‣ <b>sᴛᴀᴛᴜs :</b> ᴇɴᴄᴏᴅɪɴɢ
     <code>[{bar}]</code> {percent}%</blockquote> 
