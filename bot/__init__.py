@@ -8,7 +8,6 @@ from pyrogram import Client
 from pyrogram.enums import ParseMode
 from dotenv import load_dotenv
 from uvloop import install
-from bot.core import broadcast
 
 install()
 basicConfig(format="[%(asctime)s] [%(name)s | %(levelname)s] - %(message)s [%(filename)s:%(lineno)d]",
