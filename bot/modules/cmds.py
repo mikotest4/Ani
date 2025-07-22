@@ -95,29 +95,29 @@ async def _log(client, message):
 @new_task
 async def add_task(client, message):
     if len(args := message.text.split()) <= 1:
-        return await sendMessage(message, "<b>No Link Found to Add</b>")
+        return await sendMessage(message, "<b>ɴᴏ ʟɪɴᴋ ғᴏᴜɴᴅ ᴛᴏ ᴀᴅᴅ</b>")
     
     Var.RSS_ITEMS.append(args[1])
-    req_msg = await sendMessage(message, f"`Global Link Added Successfully!`\n\n    • **All Link(s) :** {', '.join(Var.RSS_ITEMS)[:-2]}")
+    req_msg = await sendMessage(message, f"<b>ɢʟᴏʙᴀʟ ʟɪɴᴋ ᴀᴅᴅᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ!</b>\n\n <b>• ᴀʟʟ ʟɪɴᴋ(s) :</b> {', '.join(Var.RSS_ITEMS)[:-2]}")
 
 @bot.on_message(command('addtask') & private & user(Var.ADMINS))
 @new_task
 async def add_task(client, message):
     if len(args := message.text.split()) <= 1:
-        return await sendMessage(message, "<b>No Task Found to Add</b>")
+        return await sendMessage(message, "<b>ɴᴏ ᴛᴀsᴋ ғᴏᴜɴᴅ ᴛᴏ ᴀᴅᴅ</b>")
     
     index = int(args[2]) if len(args) > 2 and args[2].isdigit() else 0
     if not (taskInfo := await getfeed(args[1], index)):
-        return await sendMessage(message, "<b>No Task Found to Add for the Provided Link</b>")
+        return await sendMessage(message, "<b>ɴᴏ ᴛᴀsᴋ ғᴏᴜɴᴅ ᴛᴏ ᴀᴅᴅ ғᴏʀ ᴛʜᴇ ᴘʀᴏᴠɪᴅᴇᴅ ʟɪɴᴋ</b>")
     
     ani_task = bot_loop.create_task(get_animes(taskInfo.title, taskInfo.link, True))
-    await sendMessage(message, f"<i><b>Task Added Successfully!</b></i>\n\n    • <b>Task Name :</b> {taskInfo.title}\n    • <b>Task Link :</b> {args[1]}")
+    await sendMessage(message, f"<b>ᴛᴀsᴋ ᴀᴅᴅᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ!</b>\n\n • <b>ᴛᴀsᴋ ɴᴀᴍᴇ : {taskInfo.title}</b>\n • <b>ᴛᴀsᴋ ʟɪɴᴋ :</b> {args[1]}")
 
 @bot.on_message(command('addmagnet') & private & user(Var.ADMINS))
 @new_task
 async def add_magnet_task(client, message):
     if len(args := message.text.split(maxsplit=1)) <= 1:
-        return await sendMessage(message, "<b>No Magnet Link Found to Add</b>")
+        return await sendMessage(message, "<b>ɴᴏ ᴍᴀɢɴᴇᴛ ʟɪɴᴋ ғᴏᴜɴᴅ ᴛᴏ ᴀᴅᴅ</b>")
     
     magnet_link = args[1]
     
@@ -129,14 +129,14 @@ async def add_magnet_task(client, message):
         anime_name = "Unknown Anime"
     
     # Send confirmation message
-    confirmation_msg = f"""✅ **Magnet Task Added!**
+    confirmation_msg = f"""✅ <b>ᴍᴀɢɴᴇᴛ ᴛᴀsᴋ ᴀᴅᴅᴇᴅ !</b>
 
-🔸 **Name:** `{anime_name}`
+🔸 <b>ɴᴀᴍᴇ: {anime_name}<b>
 
-🧲 **Magnet:** `{magnet_link[:50]}...`"""
+🧲 <b>ᴍᴀɢɴᴇᴛ: {magnet_link[:50]}...<b>"""
     
     await sendMessage(message, confirmation_msg)
     
     # Start processing the anime
     ani_task = bot_loop.create_task(get_animes(anime_name, magnet_link, True))
-    await sendMessage(message, f"<i><b>Processing Started!</b></i>\n\n    • <b>Task Name :</b> {anime_name}")
+    await sendMessage(message, f"<b>ᴘʀᴏᴄᴇssɪɴɢ sᴛᴀʀᴛᴇᴅ !</b>\n\n• <b>ᴛᴀsᴋ ɴᴀᴍᴇ :</b> {anime_name}")
