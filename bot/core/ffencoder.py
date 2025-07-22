@@ -53,8 +53,7 @@ class FFEncoder:
                 
                 progress_str = f"""<b>ᴀɴɪᴍᴇ ɴᴀᴍᴇ :</b> <b>{self.__name}</b>
 
-<blockquote>‣ <b>sᴛᴀᴛᴜs :</b> ᴇɴᴄᴏᴅɪɴɢ
-    <code>[{bar}]</code> {percent}%</blockquote> 
+<blockquote>‣ <b>sᴛᴀᴛᴜs :</b> ᴇɴᴄᴏᴅɪɴɢ <code>[{bar}]</code> {percent}%</blockquote> 
 <blockquote>‣ <b>sɪᴢᴇ :</b> {convertBytes(ensize)} out of ~ {convertBytes(tsize)}
 ‣ <b>sᴘᴇᴇᴅ :</b> {convertBytes(speed)}/s
 ‣ <b>ᴛɪᴍᴇ ᴛᴏᴏᴋ :</b> {convertTime(diff)}
