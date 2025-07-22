@@ -69,7 +69,7 @@ async def get_animes(name, torrent, force=False):
             stat_msg = await sendMessage(Var.MAIN_CHANNEL, f"<b>ᴅᴏᴡɴʟᴏᴀᴅɪɴɢ ᴀɴɪᴍᴇ</b>") #downloade Massage 
             dl = await TorDownloader("./downloads").download(torrent, name)
             if not dl or not ospath.exists(dl):
-                await rep.report(f"File Download Incomplete, Try Again", "error")
+                await rep.report(f"<b> ғɪʟᴇ ᴅᴏᴡɴʟᴏᴀᴅ ɪɴᴄᴏᴍᴘʟᴇᴛᴇ, ᴛʀʏ ᴀɢᴀɪɴ</b>", "error")
                 await stat_msg.delete()
                 return
 
@@ -78,7 +78,7 @@ async def get_animes(name, torrent, force=False):
             ff_queued[post_id] = ffEvent
             if ffLock.locked():
                 await editMessage(stat_msg, f"<b>ϙᴜᴇᴜᴇᴅ ᴛᴏ ᴇɴᴄᴏᴅᴇ...</b>")
-                await rep.report("Added Task to Queue...", "info")
+                await rep.report("<b>ᴀᴅᴅᴇᴅ ᴛᴀsᴋ ᴛᴏ ϙᴜᴇᴜᴇ....</b>", "info")
             await ffQueue.put(post_id)
             await ffEvent.wait()
             
@@ -93,22 +93,22 @@ async def get_animes(name, torrent, force=False):
                 try:
                     out_path = await FFEncoder(stat_msg, dl, filename, qual).start_encode()
                 except Exception as e:
-                    await rep.report(f"Error: {e}, Cancelled,  Retry Again !", "error")
+                    await rep.report(f"<b>ᴇʀʀᴏʀ: {e}, ᴄᴀɴᴄᴇʟʟᴇᴅ, ʀᴇᴛʀʏ ᴀɢᴀɪᴊ !</b>", "error")
                     await stat_msg.delete()
                     ffLock.release()
                     return
-                await rep.report("Succesfully Compressed Now Going To Upload...", "info")
+                await rep.report("<b>sᴜᴄᴄᴇssғᴜʟʟʏ ᴄᴏᴍᴘʀᴇssᴇᴅ ɴᴏᴡ ɢᴏɪɴɢ ᴛᴏ ᴜᴘʟᴏᴀᴅ.... </b>", "info")
                 
                 await editMessage(stat_msg, f"<b>ʀᴇᴀᴅʏ ᴛᴏ ᴜᴘʟᴏᴀᴅ...</b>")
                 await asleep(1.5)
                 try:
                     msg = await TgUploader(stat_msg).upload(out_path, qual)
                 except Exception as e:
-                    await rep.report(f"Error: {e}, Cancelled,  Retry Again !", "error")
+                    await rep.report(f"<b>ᴇʀʀᴏʀ: {e}, ᴄᴀɴᴄᴇʟʟᴇᴅ, ʀᴇᴛʀʏ ᴀɢᴀɪɴ !</b>", "error")
                     await stat_msg.delete()
                     ffLock.release()
                     return
-                await rep.report("Succesfully Uploaded File into Tg...", "info")
+                await rep.report("<b>sᴜᴄᴄᴇsғᴜʟʟʏ ᴜᴘʟᴏᴀᴅᴇᴅ ғɪʟᴇ ɪɴᴛᴏ ᴛɢ...</b>", "info")
                 
                 msg_id = msg.id
                 link = f"https://telegram.me/{(await bot.get_me()).username}?start={await encode('get-'+str(msg_id * abs(Var.FILE_STORE)))}"
