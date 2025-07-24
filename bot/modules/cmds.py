@@ -72,8 +72,11 @@ async def start_msg(client, message):
                 async def auto_del(msg, timer):
                     await asleep(timer)
                     await msg.delete()
-                await sendMessage(message, f'<b>ғɪʟᴇ ᴡɪʟʟ ʙᴇ ᴅᴇʟᴇᴛᴇᴅ ɪɴ {convertTime(Var.DEL_TIMER)},  ғᴏʀᴡᴏʀᴅ ᴛᴏ sᴀᴠᴇᴅ ᴍᴇssᴀɢᴇs ɴᴏᴡ ..</b>')
-                bot_loop.create_task(auto_del(nmsg, Var.DEL_TIMER))
+                
+                # Get dynamic delete timer from database
+                del_timer = await db.get_del_timer()
+                await sendMessage(message, f'<b>ғɪʟᴇ ᴡɪʟʟ ʙᴇ ᴅᴇʟᴇᴛᴇᴅ ɪɴ {convertTime(del_timer)},  ғᴏʀᴡᴏʀᴅ ᴛᴏ sᴀᴠᴇᴅ ᴍᴇssᴀɢᴇs ɴᴏᴡ ..</b>')
+                bot_loop.create_task(auto_del(nmsg, del_timer))
         except Exception as e:
             await rep.report(f"User : {uid} | Error : {str(e)}", "error")
             await editMessage(temp, "<b>ғɪʟᴇ ɴᴏᴛ ғᴏᴜɴᴅ !</b>")
@@ -182,6 +185,10 @@ async def help_command(client, message):
 • <code>/addlink [rss_url]</code> - Add RSS link
 • <code>/addtask [rss_url]</code> - Add specific task
 • <code>/addmagnet [magnet_link]</code> - Add magnet link
+
+<b>⏱️ Timer Management:</b>
+• <code>/dlt_time [seconds]</code> - Set auto-delete timer
+• <code>/check_dlt_time</code> - Check current timer
 """
     else:
         help_text = """
@@ -196,6 +203,10 @@ async def help_command(client, message):
 • <code>/addtask [rss_url]</code> - Add specific task
 • <code>/addmagnet [magnet_link]</code> - Add magnet link
 • <code>/admins</code> - List all admins
+
+<b>⏱️ Timer Management:</b>
+• <code>/dlt_time [seconds]</code> - Set auto-delete timer
+• <code>/check_dlt_time</code> - Check current timer
 
 <b>ℹ️ Note:</b> You cannot access broadcast or admin management commands.
 """
