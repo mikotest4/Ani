@@ -20,6 +20,10 @@ async def start_msg(client, message):
     # Track user in database
     await db.add_user(uid)
     
+    # Check if user is banned
+    if await db.is_banned(uid):
+        return await sendMessage(message, "<b>⛔ Yᴏᴜ ᴀʀᴇ ʙᴀɴɴᴇᴅ ғʀᴏᴍ ᴜsɪɴɢ ᴛʜɪs ʙᴏᴛ.</b>")
+    
     temp = await sendMessage(message, "<b>ᴄᴏɴɴᴇᴄᴛɪɴɢ..</ib")
     if not await is_fsubbed(uid):
         txt, btns = await get_fsubs(uid, txtargs)
@@ -155,84 +159,24 @@ async def add_task(client, message):
         return await sendMessage(message, "<b>ɴᴏ ᴛᴀsᴋ ғᴏᴜɴᴅ ᴛᴏ ᴀᴅᴅ ғᴏʀ ᴛʜᴇ ᴘʀᴏᴠɪᴅᴇᴅ ʟɪɴᴋ</b>")
     
     ani_task = bot_loop.create_task(get_animes(taskInfo.title, taskInfo.link, True))
-    await sendMessage(message, f"<b>ᴛᴀsᴋ ᴀᴅᴅᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ!</b>\n\n • <b>ᴛᴀsᴋ ɴᴀᴍᴇ : {taskInfo.title}</b>\n • <b>ᴛᴀsᴋ ʟɪɴᴋ :</b> {args[1]}")
+    await sendMessage(message, f"<b>ᴛᴀsᴋ ᴀᴅᴅᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ !</b>\n\n<b>• ᴀɴɪᴍᴇ ɴᴀᴍᴇ:</b> {taskInfo.title}")
 
-@bot.on_message(command('addmagnet') & private & admin)
+@bot.on_message(command('rtask') & private & admin)
 @new_task
-async def add_magnet_task(client, message):
-    if len(args := message.text.split(maxsplit=1)) <= 1:
-        return await sendMessage(message, "<b>ɴᴏ ᴍᴀɢɴᴇᴛ ʟɪɴᴋ ғᴏᴜɴᴅ ᴛᴏ ᴀᴅᴅ</b>")
+async def r_task(client, message):
+    if len(args := message.text.split()) <= 1:
+        return await sendMessage(message, "<b>ɴᴏ ʟɪɴᴋ ғᴏᴜɴᴅ ᴛᴏ ʀᴇᴛʀʏ</b>")
     
-    magnet_link = args[1]
+    index = int(args[2]) if len(args) > 2 and args[2].isdigit() else 0
+    if not (taskInfo := await getfeed(args[1], index)):
+        return await sendMessage(message, "<b>ɴᴏ ᴛᴀsᴋ ғᴏᴜɴᴅ ᴛᴏ ʀᴇᴛʀʏ ғᴏʀ ᴛʜᴇ ᴘʀᴏᴠɪᴅᴇᴅ ʟɪɴᴋ</b>")
     
-    # Extract name from magnet link
-    try:
-        parsed = parse_qs(urlparse(magnet_link).query)
-        anime_name = unquote(parsed['dn'][0]) if 'dn' in parsed else "Unknown Anime"
-    except:
-        anime_name = "Unknown Anime"
-    
-    # Send confirmation message
-    confirmation_msg = f"""✅ <b>ᴍᴀɢɴᴇᴛ ᴛᴀsᴋ ᴀᴅᴅᴇᴅ !</b>
+    ani_task = bot_loop.create_task(get_animes(taskInfo.title, taskInfo.link, True))
+    await sendMessage(message, f"<b>ᴛᴀsᴋ ʀᴇᴛʀɪᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ !</b>\n\n<b>• ᴀɴɪᴍᴇ ɴᴀᴍᴇ:</b> {taskInfo.title}")
 
-🔸 <b>ɴᴀᴍᴇ: {anime_name}<b>
-
-🧲 <b>ᴍᴀɢɴᴇᴛ: {magnet_link[:50]}...<b>"""
-    
-    await sendMessage(message, confirmation_msg)
-    
-    # Start processing the anime
-    ani_task = bot_loop.create_task(get_animes(anime_name, magnet_link, True))
-    await sendMessage(message, f"<b>ᴘʀᴏᴄᴇssɪɴɢ sᴛᴀʀᴛᴇᴅ !</b>\n\n• <b>ᴛᴀsᴋ ɴᴀᴍᴇ :</b> {anime_name}")
-
-@bot.on_message(command('help') & private & admin)
+@bot.on_message(command('reboot') & private & admin)
 @new_task
-async def help_command(client, message):
-    user_id = message.from_user.id
-    
-    if user_id == Var.OWNER_ID:
-        help_text = """
-<b>🔧 Owner Commands:</b>
-• /restart - Restart the bot
-• /add_admin [user_id] - Add admin
-• /deladmin [user_id] or /deladmin all - Remove admin(s)
-• /admins - View all admins
-• /broadcast - Broadcast message to all users
-• /pbroadcast - Broadcast and pin message
-• /dbroadcast [duration] - Broadcast with auto-delete
-• /users - Check total users
-• /log - Get bot logs
-• /addlink [rss_url] - Add RSS feed
-• /addtask [rss_url] [index] - Add specific task
-• /addmagnet [magnet_link] - Add magnet download
-• /pause - Pause anime fetching
-• /resume - Resume anime fetching
-• /dlt_time [seconds] - Set auto-delete timer
-• /check_dlt_time - Check current delete timer
-
-<b>📊 Admin Commands:</b>
-• /users - Check total users
-• /log - Get bot logs
-• /pause - Pause anime fetching
-• /resume - Resume anime fetching
-• /addlink [rss_url] - Add RSS feed
-• /addtask [rss_url] [index] - Add specific task
-• /addmagnet [magnet_link] - Add magnet download
-• /dlt_time [seconds] - Set auto-delete timer
-• /check_dlt_time - Check current delete timer
-        """
-    else:
-        help_text = """
-<b>📊 Admin Commands:</b>
-• /users - Check total users
-• /log - Get bot logs
-• /pause - Pause anime fetching
-• /resume - Resume anime fetching
-• /addlink [rss_url] - Add RSS feed
-• /addtask [rss_url] [index] - Add specific task
-• /addmagnet [magnet_link] - Add magnet download
-• /dlt_time [seconds] - Set auto-delete timer
-• /check_dlt_time - Check current delete timer
-        """
-    
-    await sendMessage(message, help_text)
+async def reboot(client, message):
+    await sendMessage(message, "<b>ᴄʟᴇᴀʀɪɴɢ ᴀɴɪᴍᴇ ᴄᴀᴄʜᴇ !!</b>")
+    await db.reboot()
+    await sendMessage(message, "<b>ʀᴇʙᴏᴏᴛ sᴜᴄᴄᴇssғᴜʟ !!</b>")
