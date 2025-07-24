@@ -34,6 +34,10 @@ class MongoDB:
     async def full_userbase(self):
         """Get all users who have interacted with the bot"""
         users = await self.__users.find({}).to_list(length=None)
-        return users
+        return [user['_id'] for user in users]
+
+    async def del_user(self, user_id):
+        """Delete a user from the database"""
+        await self.__users.delete_one({'_id': user_id})
 
 db = MongoDB(Var.MONGO_URI, "FZAutoAnimes")
