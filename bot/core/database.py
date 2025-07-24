@@ -8,7 +8,8 @@ class MongoDB:
         self.__animes = self.__db.animes[Var.BOT_TOKEN.split(':')[0]]
         self.__users = self.__db.users[Var.BOT_TOKEN.split(':')[0]]
         self.__admins = self.__db.admins[Var.BOT_TOKEN.split(':')[0]]
-        self.__settings = self.__db.settings[Var.BOT_TOKEN.split(':')[0]]  # Added for settings
+        self.__settings = self.__db.settings[Var.BOT_TOKEN.split(':')[0]]
+        self.__banned = self.__db.banned[Var.BOT_TOKEN.split(':')[0]]
 
     async def getAnime(self, ani_id):
         botset = await self.__animes.find_one({'_id': ani_id})
@@ -82,5 +83,28 @@ class MongoDB:
         else:
             # Return default value if not set
             return Var.DEL_TIMER
+
+    # Ban system methods
+    async def add_ban_user(self, user_id):
+        """Add a user to the ban list"""
+        await self.__banned.update_one(
+            {'_id': user_id}, 
+            {'$set': {'_id': user_id}}, 
+            upsert=True
+        )
+
+    async def del_ban_user(self, user_id):
+        """Remove a user from the ban list"""
+        await self.__banned.delete_one({'_id': user_id})
+
+    async def get_ban_users(self):
+        """Get all banned user IDs"""
+        banned_users = await self.__banned.find({}).to_list(length=None)
+        return [user['_id'] for user in banned_users]
+
+    async def is_banned(self, user_id):
+        """Check if user is banned"""
+        banned_user = await self.__banned.find_one({'_id': user_id})
+        return banned_user is not None
 
 db = MongoDB(Var.MONGO_URI, "FZAutoAnimes")
