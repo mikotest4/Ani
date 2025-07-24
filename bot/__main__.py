@@ -1,78 +1,72 @@
-from asyncio import get_event_loop, new_event_loop, set_event_loop
-from signal import signal, SIGINT, SIGTERM
-from uvloop import install
+from asyncio import create_task, create_subprocess_exec, create_subprocess_shell, run as asyrun, all_tasks, gather, sleep as asleep
+from aiofiles import open as aiopen
+from pyrogram import idle
+from pyrogram.filters import command, user
+from os import path as ospath, execl, kill
+from sys import executable
+from signal import SIGKILL
 
-install()
+from bot import bot, Var, bot_loop, sch, LOGS, ffQueue, ffLock, ffpids_cache, ff_queued
+from bot.core.auto_animes import fetch_animes
+from bot.core.func_utils import clean_up, new_task, editMessage
+from bot.modules.up_posts import upcoming_animes
 
-from bot import bot, LOGS, sch
-
-async def start():
-    await bot.start()
-    me = await bot.get_me()
-    LOGS.info(f"Bot Started as {me.first_name} (@{me.username})")
-    
-    # Try to import and schedule anime function if it exists
-    try:
-        from bot.core.auto_animes import sched_animes
-        sch.add_job(sched_animes, "interval", minutes=20, max_instances=1)
-        LOGS.info("Anime scheduler added successfully")
-    except ImportError as e:
-        LOGS.warning(f"Could not import sched_animes: {e}")
-        LOGS.info("Bot will run without anime scheduling")
-    except Exception as e:
-        LOGS.error(f"Error setting up anime scheduler: {e}")
-    
-    sch.start()
-    LOGS.info("Scheduler started successfully")
-
-async def stop():
-    try:
-        sch.shutdown()
-        LOGS.info("Scheduler shutdown")
-    except Exception as e:
-        LOGS.error(f"Error shutting down scheduler: {e}")
-    
-    try:
-        await bot.stop()
-        LOGS.info("Bot stopped successfully")
-    except Exception as e:
-        LOGS.error(f"Error stopping bot: {e}")
-
-def signal_handler(signum, frame):
-    LOGS.info(f"Received signal {signum}, stopping...")
-    loop = get_event_loop()
-    loop.create_task(stop())
-
-if __name__ == "__main__":
-    signal(SIGINT, signal_handler)
-    signal(SIGTERM, signal_handler)
-    
-    try:
-        loop = get_event_loop()
-    except RuntimeError:
-        loop = new_event_loop()
-        set_event_loop(loop)
-    
-    try:
-        LOGS.info("Starting bot...")
-        loop.run_until_complete(start())
-        LOGS.info("Bot is running. Press Ctrl+C to stop.")
-        loop.run_forever()
-    except KeyboardInterrupt:
-        LOGS.info("Bot stopped by user (Ctrl+C)")
-    except Exception as e:
-        LOGS.error(f"Error running bot: {e}")
-        import traceback
-        LOGS.error(traceback.format_exc())
-    finally:
-        try:
-            LOGS.info("Cleaning up...")
-            loop.run_until_complete(stop())
-        except Exception as e:
-            LOGS.error(f"Error during cleanup: {e}")
-        finally:
+@bot.on_message(command('restart') & user(Var.OWNER_ID))
+@new_task
+async def restart(client, message):
+    rmessage = await message.reply('<i>Restarting...</i>')
+    if sch.running:
+        sch.shutdown(wait=False)
+    await clean_up()
+    if len(ffpids_cache) != 0: 
+        for pid in ffpids_cache:
             try:
-                loop.close()
-                LOGS.info("Event loop closed")
-            except Exception as e:
-                LOGS.error(f"Error closing loop: {e}")
+                LOGS.info(f"Process ID : {pid}")
+                kill(pid, SIGKILL)
+            except (OSError, ProcessLookupError):
+                LOGS.error("Killing Process Failed !!")
+                continue
+    await (await create_subprocess_exec('python3', 'update.py')).wait()
+    async with aiopen(".restartmsg", "w") as f:
+        await f.write(f"{rmessage.chat.id}\n{rmessage.id}\n")
+    execl(executable, executable, "-m", "bot")
+
+async def restart():
+    if ospath.isfile(".restartmsg"):
+        with open(".restartmsg") as f:
+            chat_id, msg_id = map(int, f)
+        try:
+            await bot.edit_message_text(chat_id=chat_id, message_id=msg_id, text="<i>Restarted !</i>")
+        except Exception as e:
+            LOGS.error(e)
+            
+async def queue_loop():
+    LOGS.info("Queue Loop Started !!")
+    while True:
+        if not ffQueue.empty():
+            post_id = await ffQueue.get()
+            await asleep(1.5)
+            ff_queued[post_id].set()
+            await asleep(1.5)
+            async with ffLock:
+                ffQueue.task_done()
+        await asleep(10)
+
+async def main():
+    sch.add_job(upcoming_animes, "cron", hour=0, minute=30)
+    await bot.start()
+    await restart()
+    LOGS.info('Auto Anime Bot Started!')
+    sch.start()
+    bot_loop.create_task(queue_loop())
+    await fetch_animes()
+    await idle()
+    LOGS.info('Auto Anime Bot Stopped!')
+    await bot.stop()
+    for task in all_tasks:
+        task.cancel()
+    await clean_up()
+    LOGS.info('Finished AutoCleanUp !!')
+    
+if __name__ == '__main__':
+    bot_loop.run_until_complete(main())
