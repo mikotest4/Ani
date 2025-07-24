@@ -105,6 +105,8 @@ async def editMessage(msg, text, buttons=None, get_error=False, **kwargs):
     try:
         if not msg:
             return None
+        # Remove reply_markup from kwargs if it exists to avoid conflict
+        kwargs.pop('reply_markup', None)
         return await msg.edit_text(text=text, disable_web_page_preview=True, 
                                         reply_markup=buttons, **kwargs)
     except FloodWait as f:
