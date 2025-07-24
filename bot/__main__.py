@@ -1,72 +1,116 @@
-from asyncio import create_task, create_subprocess_exec, create_subprocess_shell, run as asyrun, all_tasks, gather, sleep as asleep
-from aiofiles import open as aiopen
-from pyrogram import idle
-from pyrogram.filters import command, user
-from os import path as ospath, execl, kill
-from sys import executable
-from signal import SIGKILL
+from pyrogram.filters import command, private, user
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from bot import bot, Var, bot_loop, sch, LOGS, ffQueue, ffLock, ffpids_cache, ff_queued
-from bot.core.auto_animes import fetch_animes
-from bot.core.func_utils import clean_up, new_task, editMessage
-from bot.modules.up_posts import upcoming_animes
+from bot import bot, Var, admin
+from bot.core.database import db
+from bot.core.func_utils import new_task
 
-@bot.on_message(command('restart') & user(Var.ADMINS))
+@bot.on_message(command('add_admin') & private & user(Var.OWNER_ID))
 @new_task
-async def restart(client, message):
-    rmessage = await message.reply('<i>Restarting...</i>')
-    if sch.running:
-        sch.shutdown(wait=False)
-    await clean_up()
-    if len(ffpids_cache) != 0: 
-        for pid in ffpids_cache:
-            try:
-                LOGS.info(f"Process ID : {pid}")
-                kill(pid, SIGKILL)
-            except (OSError, ProcessLookupError):
-                LOGS.error("Killing Process Failed !!")
-                continue
-    await (await create_subprocess_exec('python3', 'update.py')).wait()
-    async with aiopen(".restartmsg", "w") as f:
-        await f.write(f"{rmessage.chat.id}\n{rmessage.id}\n")
-    execl(executable, executable, "-m", "bot")
+async def add_admins(client, message):
+    pro = await message.reply("<b><i>ᴘʟᴇᴀsᴇ ᴡᴀɪᴛ..</i></b>", quote=True)
+    check = 0
+    admin_ids = await db.get_all_admins()
+    admins = message.text.split()[1:]
 
-async def restart():
-    if ospath.isfile(".restartmsg"):
-        with open(".restartmsg") as f:
-            chat_id, msg_id = map(int, f)
+    reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close")]])
+
+    if not admins:
+        return await pro.edit(
+            "<b>You need to provide user ID(s) to add as admin.</b>\n\n"
+            "<b>Usage:</b>\n"
+            "<code>/add_admin [user_id]</code> — Add one or more user IDs\n\n"
+            "<b>Example:</b>\n"
+            "<code>/add_admin 1234567890 9876543210</code>",
+            reply_markup=reply_markup
+        )
+
+    admin_list = ""
+    for id in admins:
         try:
-            await bot.edit_message_text(chat_id=chat_id, message_id=msg_id, text="<i>Restarted !</i>")
-        except Exception as e:
-            LOGS.error(e)
-            
-async def queue_loop():
-    LOGS.info("Queue Loop Started !!")
-    while True:
-        if not ffQueue.empty():
-            post_id = await ffQueue.get()
-            await asleep(1.5)
-            ff_queued[post_id].set()
-            await asleep(1.5)
-            async with ffLock:
-                ffQueue.task_done()
-        await asleep(10)
+            id = int(id)
+        except:
+            admin_list += f"<blockquote><b>Invalid ID: <code>{id}</code></b></blockquote>\n"
+            continue
 
-async def main():
-    sch.add_job(upcoming_animes, "cron", hour=0, minute=30)
-    await bot.start()
-    await restart()
-    LOGS.info('Auto Anime Bot Started!')
-    sch.start()
-    bot_loop.create_task(queue_loop())
-    await fetch_animes()
-    await idle()
-    LOGS.info('Auto Anime Bot Stopped!')
-    await bot.stop()
-    for task in all_tasks:
-        task.cancel()
-    await clean_up()
-    LOGS.info('Finished AutoCleanUp !!')
-    
-if __name__ == '__main__':
-    bot_loop.run_until_complete(main())
+        if id in admin_ids:
+            admin_list += f"<blockquote><b>ID <code>{id}</code> already exists.</b></blockquote>\n"
+            continue
+
+        id = str(id)
+        if id.isdigit() and len(id) >= 9:  # Allow 9+ digit IDs
+            admin_list += f"<b><blockquote>(ID: <code>{id}</code>) added.</blockquote></b>\n"
+            check += 1
+        else:
+            admin_list += f"<blockquote><b>Invalid ID: <code>{id}</code></b></blockquote>\n"
+
+    if check == len(admins):
+        for id in admins:
+            await db.add_admin(int(id))
+        await pro.edit(f"<b>✅ Admin(s) added successfully:</b>\n\n{admin_list}", reply_markup=reply_markup)
+    else:
+        await pro.edit(
+            f"<b>❌ Some errors occurred while adding admins:</b>\n\n{admin_list.strip()}\n\n"
+            "<b><i>Please check and try again.</i></b>",
+            reply_markup=reply_markup
+        )
+
+@bot.on_message(command('deladmin') & private & user(Var.OWNER_ID))
+@new_task
+async def delete_admins(client, message):
+    pro = await message.reply("<b><i>ᴘʟᴇᴀsᴇ ᴡᴀɪᴛ..</i></b>", quote=True)
+    admin_ids = await db.get_all_admins()
+    admins = message.text.split()[1:]
+
+    reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close")]])
+
+    if not admins:
+        return await pro.edit(
+            "<b>Please provide valid admin ID(s) to remove.</b>\n\n"
+            "<b>Usage:</b>\n"
+            "<code>/deladmin [user_id]</code> — Remove specific IDs\n"
+            "<code>/deladmin all</code> — Remove all admins",
+            reply_markup=reply_markup
+        )
+
+    if len(admins) == 1 and admins[0].lower() == "all":
+        if admin_ids:
+            for id in admin_ids:
+                await db.del_admin(id)
+            ids = "\n".join(f"<blockquote><code>{admin}</code> ✅</blockquote>" for admin in admin_ids)
+            return await pro.edit(f"<b>⛔️ All admin IDs have been removed:</b>\n{ids}", reply_markup=reply_markup)
+        else:
+            return await pro.edit("<b><blockquote>No admin IDs to remove.</blockquote></b>", reply_markup=reply_markup)
+
+    if admin_ids:
+        passed = ''
+        for admin_id in admins:
+            try:
+                id = int(admin_id)
+            except:
+                passed += f"<blockquote><b>Invalid ID: <code>{admin_id}</code></b></blockquote>\n"
+                continue
+
+            if id in admin_ids:
+                await db.del_admin(id)
+                passed += f"<blockquote><code>{id}</code> ✅ Removed</blockquote>\n"
+            else:
+                passed += f"<blockquote><b>ID <code>{id}</code> not found in admin list.</b></blockquote>\n"
+
+        await pro.edit(f"<b>⛔️ Admin removal result:</b>\n\n{passed}", reply_markup=reply_markup)
+    else:
+        await pro.edit("<b><blockquote>No admin IDs available to delete.</blockquote></b>", reply_markup=reply_markup)
+
+@bot.on_message(command('admins') & private & admin)
+@new_task
+async def get_admins(client, message):
+    pro = await message.reply("<b><i>ᴘʟᴇᴀsᴇ ᴡᴀɪᴛ..</i></b>", quote=True)
+    admin_ids = await db.get_all_admins()
+
+    if not admin_ids:
+        admin_list = "<b><blockquote>❌ No admins found.</blockquote></b>"
+    else:
+        admin_list = "\n".join(f"<b><blockquote>ID: <code>{id}</code></blockquote></b>" for id in admin_ids)
+
+    reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton("ᴄʟᴏsᴇ", callback_data="close")]])
+    await pro.edit(f"<b>⚡ Current Admin List:</b>\n\n{admin_list}", reply_markup=reply_markup)
