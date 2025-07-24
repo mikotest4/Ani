@@ -1,7 +1,7 @@
 from pyrogram.filters import command, private
 from pyrogram.types import Message
 
-from bot import bot, admin
+from bot import bot, admin, Var
 from bot.core.database import db
 from bot.core.func_utils import new_task, sendMessage
 
@@ -49,3 +49,67 @@ async def check_delete_time(client, message):
     
     except Exception as e:
         await sendMessage(message, f"<b>Error retrieving delete timer:</b> <code>{str(e)}</code>")
+
+@bot.on_message(command('help') & private & admin)
+@new_task
+async def help_command(client, message):
+    user_id = message.from_user.id
+    
+    if user_id == Var.OWNER_ID:
+        help_text = """
+<b>🔧 Owner Commands:</b>
+• /restart - Restart the bot
+• /add_admin [user_id] - Add admin
+• /deladmin [user_id] or /deladmin all - Remove admin(s)
+• /admins - View all admins
+• /ban [user_id] - Ban user(s)
+• /unban [user_id] or /unban all - Unban user(s)
+• /banlist - View banned users
+• /broadcast - Broadcast message to all users
+• /pbroadcast - Broadcast and pin message
+• /dbroadcast [duration] - Broadcast with auto-delete
+• /users - Check total users
+• /log - Get bot logs
+• /addlink [rss_url] - Add RSS feed
+• /addtask [rss_url] [index] - Add specific task
+• /rtask [rss_url] [index] - Retry specific task
+• /reboot - Clear anime cache
+• /pause - Pause anime fetching
+• /resume - Resume anime fetching
+• /dlt_time [seconds] - Set auto-delete timer
+• /check_dlt_time - Check current delete timer
+
+<b>📊 Admin Commands:</b>
+• /users - Check total users
+• /log - Get bot logs
+• /ban [user_id] - Ban user(s)
+• /unban [user_id] or /unban all - Unban user(s)
+• /banlist - View banned users
+• /pause - Pause anime fetching
+• /resume - Resume anime fetching
+• /addlink [rss_url] - Add RSS feed
+• /addtask [rss_url] [index] - Add specific task
+• /rtask [rss_url] [index] - Retry specific task
+• /reboot - Clear anime cache
+• /dlt_time [seconds] - Set auto-delete timer
+• /check_dlt_time - Check current delete timer
+        """
+    else:
+        help_text = """
+<b>📊 Admin Commands:</b>
+• /users - Check total users
+• /log - Get bot logs
+• /ban [user_id] - Ban user(s)
+• /unban [user_id] or /unban all - Unban user(s)
+• /banlist - View banned users
+• /pause - Pause anime fetching
+• /resume - Resume anime fetching
+• /addlink [rss_url] - Add RSS feed
+• /addtask [rss_url] [index] - Add specific task
+• /rtask [rss_url] [index] - Retry specific task
+• /reboot - Clear anime cache
+• /dlt_time [seconds] - Set auto-delete timer
+• /check_dlt_time - Check current delete timer
+        """
+    
+    await sendMessage(message, help_text)
