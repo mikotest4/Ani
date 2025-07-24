@@ -69,14 +69,38 @@ async def start_msg(client, message):
             nmsg = await msg.copy(message.chat.id, reply_markup=None)
             await temp.delete()
             if Var.AUTO_DEL:
-                async def auto_del(msg, timer):
+                async def auto_del(msg, timer, original_command, user_message):
+                    # Send notification before deletion
+                    notification_msg = await sendMessage(
+                        user_message, 
+                        f'<b>⏰ ғɪʟᴇ ᴡɪʟʟ ʙᴇ ᴅᴇʟᴇᴛᴇᴅ ɪɴ {convertTime(timer)}, ғᴏʀᴡᴏʀᴅ ᴛᴏ sᴀᴠᴇᴅ ᴍᴇssᴀɢᴇs ɴᴏᴡ ..</b>'
+                    )
                     await asleep(timer)
                     await msg.delete()
+                    
+                    # Create reload URL and button
+                    reload_url = (
+                        f"https://t.me/{(await client.get_me()).username}?start={original_command}"
+                        if original_command
+                        else None
+                    )
+                    keyboard = InlineKeyboardMarkup(
+                        [[InlineKeyboardButton("ɢᴇᴛ ғɪʟᴇ ᴀɢᴀɪɴ!", url=reload_url)]]
+                    ) if reload_url else None
+
+                    # Update notification with reload button
+                    try:
+                        await editMessage(
+                            notification_msg,
+                            "<b>ʏᴏᴜʀ ᴠɪᴅᴇᴏ / ꜰɪʟᴇ ɪꜱ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴅᴇʟᴇᴛᴇᴅ !!\n\nᴄʟɪᴄᴋ ʙᴇʟᴏᴡ ʙᴜᴛᴛᴏɴ ᴛᴏ ɢᴇᴛ ʏᴏᴜʀ ᴅᴇʟᴇᴛᴇᴅ ᴠɪᴅᴇᴏ / ꜰɪʟᴇ 👇</b>",
+                            reply_markup=keyboard
+                        )
+                    except Exception as e:
+                        await rep.report(f"Error updating notification with 'Get File Again' button: {e}", "error")
                 
                 # Get dynamic delete timer from database
                 del_timer = await db.get_del_timer()
-                await sendMessage(message, f'<b>ғɪʟᴇ ᴡɪʟʟ ʙᴇ ᴅᴇʟᴇᴛᴇᴅ ɪɴ {convertTime(del_timer)},  ғᴏʀᴡᴏʀᴅ ᴛᴏ sᴀᴠᴇᴅ ᴍᴇssᴀɢᴇs ɴᴏᴡ ..</b>')
-                bot_loop.create_task(auto_del(nmsg, del_timer))
+                bot_loop.create_task(auto_del(nmsg, del_timer, txtargs[1] if len(txtargs) > 1 else None, message))
         except Exception as e:
             await rep.report(f"User : {uid} | Error : {str(e)}", "error")
             await editMessage(temp, "<b>ғɪʟᴇ ɴᴏᴛ ғᴏᴜɴᴅ !</b>")
@@ -162,53 +186,47 @@ async def help_command(client, message):
     
     if user_id == Var.OWNER_ID:
         help_text = """
-<b>🔱 OWNER COMMANDS:</b>
+<b>🔧 Owner Commands:</b>
+• /restart - Restart the bot
+• /add_admin [user_id] - Add admin
+• /deladmin [user_id] or /deladmin all - Remove admin(s)
+• /admins - View all admins
+• /broadcast - Broadcast message to all users
+• /pbroadcast - Broadcast and pin message
+• /dbroadcast [duration] - Broadcast with auto-delete
+• /users - Check total users
+• /log - Get bot logs
+• /addlink [rss_url] - Add RSS feed
+• /addtask [rss_url] [index] - Add specific task
+• /addmagnet [magnet_link] - Add magnet download
+• /pause - Pause anime fetching
+• /resume - Resume anime fetching
+• /dlt_time [seconds] - Set auto-delete timer
+• /check_dlt_time - Check current delete timer
 
-<b>👥 Admin Management:</b>
-• <code>/add_admin [user_id]</code> - Add new admin
-• <code>/deladmin [user_id]</code> - Remove admin
-• <code>/admins</code> - List all admins
-
-<b>📢 Broadcasting:</b>
-• <code>/broadcast</code> - Broadcast message
-• <code>/pbroadcast</code> - Broadcast and pin
-• <code>/dbroadcast [seconds]</code> - Broadcast with auto-delete
-
-<b>🔧 System:</b>
-• <code>/restart</code> - Restart bot
-
-<b>📺 Anime Management:</b>
-• <code>/users</code> - Show user count
-• <code>/pause</code> - Pause anime fetching
-• <code>/resume</code> - Resume anime fetching
-• <code>/log</code> - Get log file
-• <code>/addlink [rss_url]</code> - Add RSS link
-• <code>/addtask [rss_url]</code> - Add specific task
-• <code>/addmagnet [magnet_link]</code> - Add magnet link
-
-<b>⏱️ Timer Management:</b>
-• <code>/dlt_time [seconds]</code> - Set auto-delete timer
-• <code>/check_dlt_time</code> - Check current timer
-"""
+<b>📊 Admin Commands:</b>
+• /users - Check total users
+• /log - Get bot logs
+• /pause - Pause anime fetching
+• /resume - Resume anime fetching
+• /addlink [rss_url] - Add RSS feed
+• /addtask [rss_url] [index] - Add specific task
+• /addmagnet [magnet_link] - Add magnet download
+• /dlt_time [seconds] - Set auto-delete timer
+• /check_dlt_time - Check current delete timer
+        """
     else:
         help_text = """
-<b>⚡ ADMIN COMMANDS:</b>
-
-<b>📺 Anime Management:</b>
-• <code>/users</code> - Show user count
-• <code>/pause</code> - Pause anime fetching
-• <code>/resume</code> - Resume anime fetching
-• <code>/log</code> - Get log file
-• <code>/addlink [rss_url]</code> - Add RSS link
-• <code>/addtask [rss_url]</code> - Add specific task
-• <code>/addmagnet [magnet_link]</code> - Add magnet link
-• <code>/admins</code> - List all admins
-
-<b>⏱️ Timer Management:</b>
-• <code>/dlt_time [seconds]</code> - Set auto-delete timer
-• <code>/check_dlt_time</code> - Check current timer
-
-<b>ℹ️ Note:</b> You cannot access broadcast or admin management commands.
-"""
+<b>📊 Admin Commands:</b>
+• /users - Check total users
+• /log - Get bot logs
+• /pause - Pause anime fetching
+• /resume - Resume anime fetching
+• /addlink [rss_url] - Add RSS feed
+• /addtask [rss_url] [index] - Add specific task
+• /addmagnet [magnet_link] - Add magnet download
+• /dlt_time [seconds] - Set auto-delete timer
+• /check_dlt_time - Check current delete timer
+        """
     
     await sendMessage(message, help_text)
