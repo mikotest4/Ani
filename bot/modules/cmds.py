@@ -79,11 +79,17 @@ async def start_msg(client, message):
                     await msg.delete()
                     
                     # Create reload URL and button
-                    reload_url = (
-                        f"https://t.me/{(await client.get_me()).username}?start={original_command}"
-                        if original_command
-                        else None
-                    )
+                    try:
+                        bot_info = await client.get_me()
+                        reload_url = (
+                            f"https://t.me/{bot_info.username}?start={original_command}"
+                            if original_command and bot_info.username
+                            else None
+                        )
+                    except Exception as e:
+                        await rep.report(f"Error getting bot info: {e}", "error")
+                        reload_url = None
+                    
                     keyboard = InlineKeyboardMarkup(
                         [[InlineKeyboardButton("ɢᴇᴛ ғɪʟᴇ ᴀɢᴀɪɴ!", url=reload_url)]]
                     ) if reload_url else None
@@ -92,8 +98,8 @@ async def start_msg(client, message):
                     try:
                         await editMessage(
                             notification_msg,
-                            "<b>ʏᴏᴜʀ ᴠɪᴅᴇᴏ / ꜰɪʟᴇ ɪꜱ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴅᴇʟᴇᴛᴇᴅ !!\n\nᴄʟɪᴄᴋ ʙᴇʟᴏᴡ ʙᴜᴛᴛᴏɴ ᴛᴏ ɢᴇᴛ ʏᴏᴜʀ ᴅᴇʟᴇᴛᴇᴅ ᴠɪᴅᴇᴏ / ꜰɪʟᴇ 👇</b>",
-                            reply_markup=keyboard
+                            "<b>ʏᴏᴜʀ ᴠɪᴅᴇᴏ / ꜰɪʟᴇ ɪꜱ ꜱᴜᴄᴄᴇꜱꜱꜰᴜʟʟʏ ᴅᴇʟᴇᴛᴇᴅ !!</b>",
+                            keyboard
                         )
                     except Exception as e:
                         await rep.report(f"Error updating notification with 'Get File Again' button: {e}", "error")
