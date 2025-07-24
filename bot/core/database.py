@@ -6,7 +6,8 @@ class MongoDB:
         self.__client = AsyncIOMotorClient(uri)
         self.__db = self.__client[database_name]
         self.__animes = self.__db.animes[Var.BOT_TOKEN.split(':')[0]]
-        self.__users = self.__db.users[Var.BOT_TOKEN.split(':')[0]]  # Added for user tracking
+        self.__users = self.__db.users[Var.BOT_TOKEN.split(':')[0]]
+        self.__admins = self.__db.admins[Var.BOT_TOKEN.split(':')[0]]  # Added for admin system
 
     async def getAnime(self, ani_id):
         botset = await self.__animes.find_one({'_id': ani_id})
@@ -22,7 +23,7 @@ class MongoDB:
     async def reboot(self):
         await self.__animes.drop()
 
-    # Added methods for user tracking
+    # User management methods
     async def add_user(self, user_id):
         """Add a user to the database if not exists"""
         await self.__users.update_one(
@@ -39,5 +40,28 @@ class MongoDB:
     async def del_user(self, user_id):
         """Delete a user from the database"""
         await self.__users.delete_one({'_id': user_id})
+
+    # Admin management methods
+    async def add_admin(self, admin_id):
+        """Add an admin to the database"""
+        await self.__admins.update_one(
+            {'_id': admin_id}, 
+            {'$set': {'_id': admin_id}}, 
+            upsert=True
+        )
+
+    async def del_admin(self, admin_id):
+        """Remove an admin from the database"""
+        await self.__admins.delete_one({'_id': admin_id})
+
+    async def get_all_admins(self):
+        """Get all admin IDs"""
+        admins = await self.__admins.find({}).to_list(length=None)
+        return [admin['_id'] for admin in admins]
+
+    async def is_admin(self, user_id):
+        """Check if user is admin"""
+        admin = await self.__admins.find_one({'_id': user_id})
+        return admin is not None
 
 db = MongoDB(Var.MONGO_URI, "FZAutoAnimes")
