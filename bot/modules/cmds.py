@@ -57,7 +57,7 @@ async def start_msg(client, message):
         arg = (await decode(txtargs[1])).split('-')
     except Exception as e:
         await rep.report(f"User : {uid} | Error : {str(e)}", "error")
-        await editMessage(temp, "<b>ɪɴᴘᴜᴛ ʟɪɴᴋ ᴄᴏᴅᴇ ᴅᴇᴄᴏᴅᴇ ғᴀɪʟᴇᴅ !</b>")
+        await editMessage(temp, "<b>ɪɴᴘᴜᴛ ʟɪɴᴋ ᴄᴏᴅᴇ �ᴇᴄᴏᴅᴇ ғᴀɪʟᴇᴅ !</b>")
         return
     if len(arg) == 2 and arg[0] == 'get':
         try:
@@ -180,3 +180,31 @@ async def reboot(client, message):
     await sendMessage(message, "<b>ᴄʟᴇᴀʀɪɴɢ ᴀɴɪᴍᴇ ᴄᴀᴄʜᴇ !!</b>")
     await db.reboot()
     await sendMessage(message, "<b>ʀᴇʙᴏᴏᴛ sᴜᴄᴄᴇssғᴜʟ !!</b>")
+
+@bot.on_message(command('addmagnet') & private & admin)
+@new_task
+async def add_magnet_task(client, message):
+    if len(args := message.text.split(maxsplit=1)) <= 1:
+        return await sendMessage(message, "<b>ɴᴏ ᴍᴀɢɴᴇᴛ ʟɪɴᴋ ғᴏᴜɴᴅ ᴛᴏ ᴀᴅᴅ</b>")
+    
+    magnet_link = args[1]
+    
+    # Extract name from magnet link
+    try:
+        parsed = parse_qs(urlparse(magnet_link).query)
+        anime_name = unquote(parsed['dn'][0]) if 'dn' in parsed else "Unknown Anime"
+    except:
+        anime_name = "Unknown Anime"
+    
+    # Send confirmation message
+    confirmation_msg = f"""✅ <b>ᴍᴀɢɴᴇᴛ ᴛᴀsᴋ ᴀᴅᴅᴇᴅ !</b>
+
+🔸 <b>ɴᴀᴍᴇ: {anime_name}<b>
+
+🧲 <b>ᴍᴀɢɴᴇᴛ: {magnet_link[:50]}...<b>"""
+    
+    await sendMessage(message, confirmation_msg)
+    
+    # Start processing the anime
+    ani_task = bot_loop.create_task(get_animes(anime_name, magnet_link, True))
+    await sendMessage(message, f"<b>ᴘʀᴏᴄᴇssɪɴɢ sᴛᴀʀᴛᴇᴅ !</b>\n\n• <b>ᴛᴀsᴋ ɴᴀᴍᴇ :</b> {anime_name}")
