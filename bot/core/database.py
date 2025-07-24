@@ -7,7 +7,8 @@ class MongoDB:
         self.__db = self.__client[database_name]
         self.__animes = self.__db.animes[Var.BOT_TOKEN.split(':')[0]]
         self.__users = self.__db.users[Var.BOT_TOKEN.split(':')[0]]
-        self.__admins = self.__db.admins[Var.BOT_TOKEN.split(':')[0]]  # Added for admin system
+        self.__admins = self.__db.admins[Var.BOT_TOKEN.split(':')[0]]
+        self.__settings = self.__db.settings[Var.BOT_TOKEN.split(':')[0]]  # Added for settings
 
     async def getAnime(self, ani_id):
         botset = await self.__animes.find_one({'_id': ani_id})
@@ -63,5 +64,23 @@ class MongoDB:
         """Check if user is admin"""
         admin = await self.__admins.find_one({'_id': user_id})
         return admin is not None
+
+    # Delete timer management methods
+    async def set_del_timer(self, duration):
+        """Set delete timer duration in database"""
+        await self.__settings.update_one(
+            {'_id': 'delete_timer'}, 
+            {'$set': {'duration': duration}}, 
+            upsert=True
+        )
+
+    async def get_del_timer(self):
+        """Get current delete timer duration"""
+        setting = await self.__settings.find_one({'_id': 'delete_timer'})
+        if setting:
+            return setting['duration']
+        else:
+            # Return default value if not set
+            return Var.DEL_TIMER
 
 db = MongoDB(Var.MONGO_URI, "FZAutoAnimes")
