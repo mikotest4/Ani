@@ -16,6 +16,10 @@ async def start_msg(client, message):
     uid = message.from_user.id
     from_user = message.from_user
     txtargs = message.text.split()
+    
+    # Track user in database
+    await db.add_user(uid)
+    
     temp = await sendMessage(message, "<b>ᴄᴏɴɴᴇᴄᴛɪɴɢ..</ib")
     if not await is_fsubbed(uid):
         txt, btns = await get_fsubs(uid, txtargs)
@@ -75,6 +79,13 @@ async def start_msg(client, message):
             await editMessage(temp, "<b>ғɪʟᴇ ɴᴏᴛ ғᴏᴜɴᴅ !</b>")
     else:
         await editMessage(temp, "<b>ɪɴᴘᴜᴛ ʟɪɴᴋ ɪs ɪɴᴠᴀʟɪᴅ ғᴏʀ ᴜsᴀɢᴇ !</b>")
+
+@bot.on_message(command('users') & private & user(Var.ADMINS))
+@new_task
+async def get_users(client, message):
+    msg = await sendMessage(message, Var.WAIT_MSG)
+    users = await db.full_userbase()
+    await editMessage(msg, f"<b>{len(users)} users are using this bot</b>")
     
 @bot.on_message(command('pause') & private & user(Var.ADMINS))
 async def pause_fetch(client, message):
