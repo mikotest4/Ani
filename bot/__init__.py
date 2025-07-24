@@ -4,7 +4,7 @@ from traceback import format_exc
 from asyncio import Queue, Lock
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from pyrogram import Client
+from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
 from dotenv import load_dotenv
 from uvloop import install
@@ -45,7 +45,10 @@ class Var:
     MAIN_CHANNEL = int(getenv("MAIN_CHANNEL"))
     LOG_CHANNEL = int(getenv("LOG_CHANNEL") or 0)
     FILE_STORE = int(getenv("FILE_STORE"))
-    ADMINS = list(map(int, getenv("ADMINS", "1242011540").split()))
+    
+    # Owner system instead of multiple admins
+    OWNER = getenv("OWNER", "Mikoyae756")  # Owner username without @
+    OWNER_ID = int(getenv("OWNER_ID", "7970350353"))  # Owner id
     
     SEND_SCHEDULE = getenv("SEND_SCHEDULE", "False").lower() == "true"
     BRAND_UNAME = getenv("BRAND_UNAME", "@username")
@@ -67,6 +70,18 @@ class Var:
     WAIT_MSG = "<b>Please wait...</b>"
     # Added for broadcast commands
     REPLY_ERROR = "<b>Pʟᴇᴀsᴇ ʀᴇᴘʟʏ ᴛᴏ ᴀ ᴍᴇssᴀɢᴇ ᴛᴏ ʙʀᴏᴀᴅᴄᴀsᴛ ɪᴛ.</b>"
+
+# Admin filter function
+async def admin_filter(_, __, message):
+    """Custom filter to check if user is admin or owner"""
+    user_id = message.from_user.id
+    if user_id == Var.OWNER_ID:
+        return True
+    from bot.core.database import db
+    return await db.is_admin(user_id)
+
+# Create the admin filter
+admin = filters.create(admin_filter)
 
 if Var.THUMB and not ospath.exists("thumb.jpg"):
     system(f"wget -q {Var.THUMB} -O thumb.jpg")
