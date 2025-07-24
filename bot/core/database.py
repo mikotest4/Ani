@@ -6,6 +6,7 @@ class MongoDB:
         self.__client = AsyncIOMotorClient(uri)
         self.__db = self.__client[database_name]
         self.__animes = self.__db.animes[Var.BOT_TOKEN.split(':')[0]]
+        self.__users = self.__db.users[Var.BOT_TOKEN.split(':')[0]]  # Added for user tracking
 
     async def getAnime(self, ani_id):
         botset = await self.__animes.find_one({'_id': ani_id})
@@ -20,5 +21,19 @@ class MongoDB:
 
     async def reboot(self):
         await self.__animes.drop()
+
+    # Added methods for user tracking
+    async def add_user(self, user_id):
+        """Add a user to the database if not exists"""
+        await self.__users.update_one(
+            {'_id': user_id}, 
+            {'$set': {'_id': user_id}}, 
+            upsert=True
+        )
+
+    async def full_userbase(self):
+        """Get all users who have interacted with the bot"""
+        users = await self.__users.find({}).to_list(length=None)
+        return users
 
 db = MongoDB(Var.MONGO_URI, "FZAutoAnimes")
