@@ -4,7 +4,7 @@ from pyrogram.filters import command, private, user
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from pyrogram.errors import FloodWait, MessageNotModified
 
-from bot import bot, bot_loop, Var, ani_cache
+from bot import bot, bot_loop, Var, ani_cache, admin
 from bot.core.database import db
 from bot.core.func_utils import decode, is_fsubbed, get_fsubs, editMessage, sendMessage, new_task, convertTime, getfeed
 from bot.core.auto_animes import get_animes
@@ -80,38 +80,38 @@ async def start_msg(client, message):
     else:
         await editMessage(temp, "<b>ɪɴᴘᴜᴛ ʟɪɴᴋ ɪs ɪɴᴠᴀʟɪᴅ ғᴏʀ ᴜsᴀɢᴇ !</b>")
 
-@bot.on_message(command('users') & private & user(Var.ADMINS))
+@bot.on_message(command('users') & private & admin)
 @new_task
 async def get_users(client, message):
     msg = await sendMessage(message, Var.WAIT_MSG)
     users = await db.full_userbase()
     await editMessage(msg, f"<b>{len(users)} users are using this bot</b>")
     
-@bot.on_message(command('pause') & private & user(Var.ADMINS))
+@bot.on_message(command('pause') & private & admin)
 async def pause_fetch(client, message):
     ani_cache['fetch_animes'] = False
     await sendMessage(message, "<b>sᴜᴄᴄᴇssғᴜʟʟʏ ᴘᴀᴜsᴇᴅ ғᴇᴛᴄʜɪɴɢ ᴀɴɪᴍᴇ...</b>")
 
-@bot.on_message(command('resume') & private & user(Var.ADMINS))
-async def pause_fetch(client, message):
+@bot.on_message(command('resume') & private & admin)
+async def resume_fetch(client, message):
     ani_cache['fetch_animes'] = True
     await sendMessage(message, "<b>sᴜᴄᴄᴇssғᴜʟʟʏ ʀᴇsᴜᴍᴇᴅ ғᴇᴛᴄʜɪɴɢ ᴀɴɪᴍᴇ...</b>")
 
-@bot.on_message(command('log') & private & user(Var.ADMINS))
+@bot.on_message(command('log') & private & admin)
 @new_task
 async def _log(client, message):
     await message.reply_document("log.txt", quote=True)
 
-@bot.on_message(command('addlink') & private & user(Var.ADMINS))
+@bot.on_message(command('addlink') & private & admin)
 @new_task
-async def add_task(client, message):
+async def add_link(client, message):
     if len(args := message.text.split()) <= 1:
         return await sendMessage(message, "<b>ɴᴏ ʟɪɴᴋ ғᴏᴜɴᴅ ᴛᴏ ᴀᴅᴅ</b>")
     
     Var.RSS_ITEMS.append(args[1])
     req_msg = await sendMessage(message, f"<b>ɢʟᴏʙᴀʟ ʟɪɴᴋ ᴀᴅᴅᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ!</b>\n\n <b>• ᴀʟʟ ʟɪɴᴋ(s) :</b> {', '.join(Var.RSS_ITEMS)[:-2]}")
 
-@bot.on_message(command('addtask') & private & user(Var.ADMINS))
+@bot.on_message(command('addtask') & private & admin)
 @new_task
 async def add_task(client, message):
     if len(args := message.text.split()) <= 1:
@@ -124,7 +124,7 @@ async def add_task(client, message):
     ani_task = bot_loop.create_task(get_animes(taskInfo.title, taskInfo.link, True))
     await sendMessage(message, f"<b>ᴛᴀsᴋ ᴀᴅᴅᴇᴅ sᴜᴄᴄᴇssғᴜʟʟʏ!</b>\n\n • <b>ᴛᴀsᴋ ɴᴀᴍᴇ : {taskInfo.title}</b>\n • <b>ᴛᴀsᴋ ʟɪɴᴋ :</b> {args[1]}")
 
-@bot.on_message(command('addmagnet') & private & user(Var.ADMINS))
+@bot.on_message(command('addmagnet') & private & admin)
 @new_task
 async def add_magnet_task(client, message):
     if len(args := message.text.split(maxsplit=1)) <= 1:
@@ -151,3 +151,53 @@ async def add_magnet_task(client, message):
     # Start processing the anime
     ani_task = bot_loop.create_task(get_animes(anime_name, magnet_link, True))
     await sendMessage(message, f"<b>ᴘʀᴏᴄᴇssɪɴɢ sᴛᴀʀᴛᴇᴅ !</b>\n\n• <b>ᴛᴀsᴋ ɴᴀᴍᴇ :</b> {anime_name}")
+
+@bot.on_message(command('help') & private & admin)
+@new_task
+async def help_command(client, message):
+    user_id = message.from_user.id
+    
+    if user_id == Var.OWNER_ID:
+        help_text = """
+<b>🔱 OWNER COMMANDS:</b>
+
+<b>👥 Admin Management:</b>
+• <code>/add_admin [user_id]</code> - Add new admin
+• <code>/deladmin [user_id]</code> - Remove admin
+• <code>/admins</code> - List all admins
+
+<b>📢 Broadcasting:</b>
+• <code>/broadcast</code> - Broadcast message
+• <code>/pbroadcast</code> - Broadcast and pin
+• <code>/dbroadcast [seconds]</code> - Broadcast with auto-delete
+
+<b>🔧 System:</b>
+• <code>/restart</code> - Restart bot
+
+<b>📺 Anime Management:</b>
+• <code>/users</code> - Show user count
+• <code>/pause</code> - Pause anime fetching
+• <code>/resume</code> - Resume anime fetching
+• <code>/log</code> - Get log file
+• <code>/addlink [rss_url]</code> - Add RSS link
+• <code>/addtask [rss_url]</code> - Add specific task
+• <code>/addmagnet [magnet_link]</code> - Add magnet link
+"""
+    else:
+        help_text = """
+<b>⚡ ADMIN COMMANDS:</b>
+
+<b>📺 Anime Management:</b>
+• <code>/users</code> - Show user count
+• <code>/pause</code> - Pause anime fetching
+• <code>/resume</code> - Resume anime fetching
+• <code>/log</code> - Get log file
+• <code>/addlink [rss_url]</code> - Add RSS link
+• <code>/addtask [rss_url]</code> - Add specific task
+• <code>/addmagnet [magnet_link]</code> - Add magnet link
+• <code>/admins</code> - List all admins
+
+<b>ℹ️ Note:</b> You cannot access broadcast or admin management commands.
+"""
+    
+    await sendMessage(message, help_text)
