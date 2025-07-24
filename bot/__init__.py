@@ -65,6 +65,8 @@ class Var:
     
     # Added for users command
     WAIT_MSG = "<b>Please wait...</b>"
+    # Added for broadcast commands
+    REPLY_ERROR = "<b>Pʟᴇᴀsᴇ ʀᴇᴘʟʏ ᴛᴏ ᴀ ᴍᴇssᴀɢᴇ ᴛᴏ ʙʀᴏᴀᴅᴄᴀsᴛ ɪᴛ.</b>"
 
 if Var.THUMB and not ospath.exists("thumb.jpg"):
     system(f"wget -q {Var.THUMB} -O thumb.jpg")
