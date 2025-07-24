@@ -6,7 +6,7 @@ from bot import bot, Var
 from bot.core.database import db
 from bot.core.func_utils import sendMessage, new_task
 
-@bot.on_message(command('dbroadcast') & private & user(Var.ADMINS))
+@bot.on_message(command('dbroadcast') & private & user(Var.OWNER_ID))
 @new_task
 async def delete_broadcast(client, message):
     if message.reply_to_message:
@@ -63,7 +63,7 @@ Unsuccessful: <code>{unsuccessful}</code></b>"""
         await asyncio.sleep(8)
         await msg.delete()
 
-@bot.on_message(command('pbroadcast') & private & user(Var.ADMINS))
+@bot.on_message(command('pbroadcast') & private & user(Var.OWNER_ID))
 @new_task
 async def send_pin_text(client, message):
     if message.reply_to_message:
@@ -113,7 +113,7 @@ Unsuccessful: <code>{unsuccessful}</code>"""
         await asyncio.sleep(8)
         await msg.delete()
 
-@bot.on_message(command('broadcast') & private & user(Var.ADMINS))
+@bot.on_message(command('broadcast') & private & user(Var.OWNER_ID))
 @new_task
 async def send_text(client, message):
     if message.reply_to_message:
