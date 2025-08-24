@@ -11,6 +11,7 @@ class MongoDB:
         self.__settings = self.__db.settings[Var.BOT_TOKEN.split(':')[0]]
         self.__banned = self.__db.banned[Var.BOT_TOKEN.split(':')[0]]
         self.__anime_channels = self.__db.anime_channels[Var.BOT_TOKEN.split(':')[0]]
+        self.__pending_connections = self.__db.pending_connections[Var.BOT_TOKEN.split(':')[0]]
 
     async def getAnime(self, ani_id):
         botset = await self.__animes.find_one({'_id': ani_id})
@@ -108,9 +109,9 @@ class MongoDB:
         banned_user = await self.__banned.find_one({'_id': user_id})
         return banned_user is not None
 
-    # Anime Channel Mapping Methods
-    async def add_anime_channel(self, anime_name, channel_id, channel_title=None):
-        """Add anime to channel mapping"""
+    # Enhanced Anime Channel Mapping Methods
+    async def add_anime_channel(self, anime_name, channel_id, channel_title=None, invite_link=None):
+        """Add anime to channel mapping with invite link"""
         await self.__anime_channels.update_one(
             {'_id': anime_name.lower()}, 
             {'$set': {
@@ -118,6 +119,7 @@ class MongoDB:
                 'anime_name': anime_name,
                 'channel_id': channel_id,
                 'channel_title': channel_title,
+                'invite_link': invite_link,
                 'created_at': await self._get_current_time()
             }}, 
             upsert=True
@@ -128,14 +130,19 @@ class MongoDB:
         mapping = await self.__anime_channels.find_one({'_id': anime_name.lower()})
         return mapping['channel_id'] if mapping else None
 
+    async def get_anime_channel_details(self, anime_name):
+        """Get complete channel details for specific anime"""
+        mapping = await self.__anime_channels.find_one({'_id': anime_name.lower()})
+        return mapping if mapping else None
+
     async def find_channel_by_anime_title(self, title):
-        """Smart matching to find channel by anime title"""
+        """Smart matching to find channel details by anime title"""
         title_lower = title.lower()
         
         # Direct match
         mapping = await self.__anime_channels.find_one({'_id': title_lower})
         if mapping:
-            return mapping['channel_id']
+            return mapping
         
         # Partial match - check if any stored anime name is contained in the title
         all_mappings = await self.__anime_channels.find({}).to_list(length=None)
@@ -143,7 +150,7 @@ class MongoDB:
             stored_name = mapping['anime_name'].lower()
             # Check if stored name is in the title or title is in stored name
             if stored_name in title_lower or title_lower in stored_name:
-                return mapping['channel_id']
+                return mapping
         
         return None
 
@@ -156,6 +163,28 @@ class MongoDB:
         """Get all anime channel mappings"""
         mappings = await self.__anime_channels.find({}).to_list(length=None)
         return mappings
+
+    # Pending Connection Methods
+    async def add_pending_connection(self, user_id, anime_name):
+        """Add pending connection waiting for forwarded message"""
+        await self.__pending_connections.update_one(
+            {'_id': user_id}, 
+            {'$set': {
+                '_id': user_id,
+                'anime_name': anime_name,
+                'created_at': await self._get_current_time()
+            }}, 
+            upsert=True
+        )
+
+    async def get_pending_connection(self, user_id):
+        """Get pending connection for user"""
+        pending = await self.__pending_connections.find_one({'_id': user_id})
+        return pending['anime_name'] if pending else None
+
+    async def remove_pending_connection(self, user_id):
+        """Remove pending connection"""
+        await self.__pending_connections.delete_one({'_id': user_id})
 
     async def _get_current_time(self):
         """Get current timestamp"""
