@@ -7,12 +7,14 @@ from pyrogram.errors import FloodWait
 
 from bot import bot, Var
 from .func_utils import editMessage, sendMessage, convertBytes, convertTime
+from .database import db
 from .reporter import rep
 
 class TgUploader:
-    def __init__(self, message):
+    def __init__(self, message, anime_name=None):
         self.cancelled = False
         self.message = message
+        self.anime_name = anime_name or ""
         self.__name = ""
         self.__qual = ""
         self.__client = bot
@@ -22,19 +24,31 @@ class TgUploader:
     async def upload(self, path, qual):
         self.__name = ospath.basename(path)
         self.__qual = qual
+        
         try:
+            # Check for custom thumbnail for this anime
+            custom_thumb = await db.get_custom_thumb(self.anime_name)
+            
+            # Use custom thumbnail if available, otherwise use default
+            if custom_thumb:
+                thumb_to_use = custom_thumb
+                await rep.report(f"✅ Using custom thumbnail for: {self.anime_name}", "info")
+            else:
+                thumb_to_use = "thumb.jpg" if ospath.exists("thumb.jpg") else None
+                await rep.report(f"🖼️ Using default thumbnail for: {self.anime_name}", "info")
+            
             if Var.AS_DOC:
                 return await self.__client.send_document(chat_id=Var.FILE_STORE,
                     document=path,
-                    thumb="thumb.jpg" if ospath.exists("thumb.jpg") else None,
+                    thumb=thumb_to_use,
                     caption=f"<b>{self.__name}</b>",
                     force_document=True,
                     progress=self.progress_status
                 )
             else:
                 return await self.__client.send_video(chat_id=Var.FILE_STORE,
-                    document=path,
-                    thumb="thumb.jpg" if ospath.exists("thumb.jpg") else None,
+                    video=path,
+                    thumb=thumb_to_use,
                     caption=f"<b>{self.__name}</b>",
                     progress=self.progress_status
                 )
