@@ -165,13 +165,14 @@ class MongoDB:
         return mappings
 
     # Pending Connection Methods
-    async def add_pending_connection(self, user_id, anime_name):
+    async def add_pending_connection(self, user_id, anime_name, invite_link=None):
         """Add pending connection waiting for forwarded message"""
         await self.__pending_connections.update_one(
             {'_id': user_id}, 
             {'$set': {
                 '_id': user_id,
                 'anime_name': anime_name,
+                'invite_link': invite_link,
                 'created_at': await self._get_current_time()
             }}, 
             upsert=True
@@ -180,7 +181,7 @@ class MongoDB:
     async def get_pending_connection(self, user_id):
         """Get pending connection for user"""
         pending = await self.__pending_connections.find_one({'_id': user_id})
-        return pending['anime_name'] if pending else None
+        return pending if pending else None
 
     async def remove_pending_connection(self, user_id):
         """Remove pending connection"""
