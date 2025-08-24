@@ -355,15 +355,13 @@ class Database:
         try:
             if self.db is None:
                 await self.connect()
-            result = await self.db.pending_connections.delete_one({"user_id": user_id})
-            return result.deleted_count > 0
+            await self.db.pending_connections.delete_one({"user_id": user_id})
         except Exception as e:
             await rep.report(f"Error removing pending connection: {str(e)}", "error")
-            return False
 
-    # CUSTOM BANNERS MANAGEMENT
+    # CUSTOM BANNERS
     async def add_custom_banner(self, anime_name, banner_file_id):
-        """Add custom banner"""
+        """Add custom banner for anime"""
         try:
             if self.db is None:
                 await self.connect()
@@ -378,10 +376,8 @@ class Database:
                 {"$set": banner_data},
                 upsert=True
             )
-            return True
         except Exception as e:
             await rep.report(f"Error adding custom banner: {str(e)}", "error")
-            return False
 
     async def get_custom_banner(self, anime_name):
         """Get custom banner for anime"""
@@ -389,7 +385,7 @@ class Database:
             if self.db is None:
                 await self.connect()
             banner = await self.db.custom_banners.find_one({"anime_name": anime_name})
-            return banner["banner_file_id"] if banner else None
+            return banner.get("banner_file_id") if banner else None
         except Exception as e:
             await rep.report(f"Error getting custom banner: {str(e)}", "error")
             return None
@@ -399,17 +395,19 @@ class Database:
         try:
             if self.db is None:
                 await self.connect()
-            cursor = self.db.custom_banners.find({})
+            cursor = self.db.custom_banners.find({}).sort("date_added", -1)
+            
             banners = []
             async for banner in cursor:
                 banners.append({
-                    "anime_name": banner["anime_name"],
-                    "banner_file_id": banner["banner_file_id"],
-                    "date_added": banner.get("date_added", "Unknown")
+                    'anime_name': banner["anime_name"],
+                    'banner_file_id': banner["banner_file_id"],
+                    'date_added': banner.get("date_added", "Unknown")
                 })
+            
             return banners
         except Exception as e:
-            await rep.report(f"Error getting all banners: {str(e)}", "error")
+            await rep.report(f"Error getting all custom banners: {str(e)}", "error")
             return []
 
     async def remove_custom_banner(self, anime_name):
@@ -420,43 +418,206 @@ class Database:
             result = await self.db.custom_banners.delete_one({"anime_name": anime_name})
             return result.deleted_count > 0
         except Exception as e:
-            await rep.report(f"Error removing banner: {str(e)}", "error")
+            await rep.report(f"Error removing custom banner: {str(e)}", "error")
             return False
 
-    # SETTINGS MANAGEMENT
-    async def set_del_timer(self, duration):
-        """Set auto-delete timer"""
+    # CUSTOM FILENAME MANAGEMENT
+    async def add_custom_filename(self, anime_name, filename_format):
+        """Add custom filename format for anime"""
+        try:
+            if self.db is None:
+                await self.connect()
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            filename_data = {
+                "anime_name": anime_name,
+                "filename_format": filename_format,
+                "date_added": current_time
+            }
+            await self.db.custom_filenames.update_one(
+                {"anime_name": anime_name},
+                {"$set": filename_data},
+                upsert=True
+            )
+            return True
+        except Exception as e:
+            await rep.report(f"Error adding custom filename: {str(e)}", "error")
+            return False
+
+    async def get_custom_filename(self, anime_name):
+        """Get custom filename format for anime"""
+        try:
+            if self.db is None:
+                await self.connect()
+            
+            # Clean the anime name for matching
+            clean_input = self.clean_name_for_matching(anime_name)
+            
+            # Try exact match first
+            filename_data = await self.db.custom_filenames.find_one({"anime_name": anime_name})
+            if filename_data:
+                return filename_data.get("filename_format")
+            
+            # Try partial match
+            cursor = self.db.custom_filenames.find({})
+            async for record in cursor:
+                stored_name = record["anime_name"]
+                clean_stored = self.clean_name_for_matching(stored_name)
+                
+                if clean_stored.lower() in clean_input.lower() or clean_input.lower() in clean_stored.lower():
+                    return record.get("filename_format")
+            
+            return None
+        except Exception as e:
+            await rep.report(f"Error getting custom filename: {str(e)}", "error")
+            return None
+
+    async def get_all_custom_filenames(self):
+        """Get all custom filename formats"""
+        try:
+            if self.db is None:
+                await self.connect()
+            cursor = self.db.custom_filenames.find({}).sort("date_added", -1)
+            
+            filenames = []
+            async for filename in cursor:
+                filenames.append({
+                    'anime_name': filename["anime_name"],
+                    'filename_format': filename["filename_format"],
+                    'date_added': filename.get("date_added", "Unknown")
+                })
+            
+            return filenames
+        except Exception as e:
+            await rep.report(f"Error getting all custom filenames: {str(e)}", "error")
+            return []
+
+    async def remove_custom_filename(self, anime_name):
+        """Remove custom filename format"""
+        try:
+            if self.db is None:
+                await self.connect()
+            result = await self.db.custom_filenames.delete_one({"anime_name": anime_name})
+            return result.deleted_count > 0
+        except Exception as e:
+            await rep.report(f"Error removing custom filename: {str(e)}", "error")
+            return False
+
+    # CUSTOM THUMBNAIL MANAGEMENT
+    async def add_custom_thumb(self, anime_name, thumb_file_id):
+        """Add custom thumbnail for anime"""
+        try:
+            if self.db is None:
+                await self.connect()
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            thumb_data = {
+                "anime_name": anime_name,
+                "thumb_file_id": thumb_file_id,
+                "date_added": current_time
+            }
+            await self.db.custom_thumbnails.update_one(
+                {"anime_name": anime_name},
+                {"$set": thumb_data},
+                upsert=True
+            )
+            return True
+        except Exception as e:
+            await rep.report(f"Error adding custom thumbnail: {str(e)}", "error")
+            return False
+
+    async def get_custom_thumb(self, anime_name):
+        """Get custom thumbnail for anime"""
+        try:
+            if self.db is None:
+                await self.connect()
+            
+            # Clean the anime name for matching
+            clean_input = self.clean_name_for_matching(anime_name)
+            
+            # Try exact match first
+            thumb_data = await self.db.custom_thumbnails.find_one({"anime_name": anime_name})
+            if thumb_data:
+                return thumb_data.get("thumb_file_id")
+            
+            # Try partial match
+            cursor = self.db.custom_thumbnails.find({})
+            async for record in cursor:
+                stored_name = record["anime_name"]
+                clean_stored = self.clean_name_for_matching(stored_name)
+                
+                if clean_stored.lower() in clean_input.lower() or clean_input.lower() in clean_stored.lower():
+                    return record.get("thumb_file_id")
+            
+            return None
+        except Exception as e:
+            await rep.report(f"Error getting custom thumbnail: {str(e)}", "error")
+            return None
+
+    async def get_all_custom_thumbs(self):
+        """Get all custom thumbnails"""
+        try:
+            if self.db is None:
+                await self.connect()
+            cursor = self.db.custom_thumbnails.find({}).sort("date_added", -1)
+            
+            thumbs = []
+            async for thumb in cursor:
+                thumbs.append({
+                    'anime_name': thumb["anime_name"],
+                    'thumb_file_id': thumb["thumb_file_id"],
+                    'date_added': thumb.get("date_added", "Unknown")
+                })
+            
+            return thumbs
+        except Exception as e:
+            await rep.report(f"Error getting all custom thumbnails: {str(e)}", "error")
+            return []
+
+    async def remove_custom_thumb(self, anime_name):
+        """Remove custom thumbnail"""
+        try:
+            if self.db is None:
+                await self.connect()
+            result = await self.db.custom_thumbnails.delete_one({"anime_name": anime_name})
+            return result.deleted_count > 0
+        except Exception as e:
+            await rep.report(f"Error removing custom thumbnail: {str(e)}", "error")
+            return False
+
+    # DELETE TIMER MANAGEMENT
+    async def set_del_timer(self, timer):
+        """Set delete timer"""
         try:
             if self.db is None:
                 await self.connect()
             await self.db.settings.update_one(
-                {"key": "del_timer"},
-                {"$set": {"key": "del_timer", "value": str(duration)}},
+                {"setting": "del_timer"},
+                {"$set": {"value": timer, "updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}},
                 upsert=True
             )
         except Exception as e:
             await rep.report(f"Error setting delete timer: {str(e)}", "error")
 
     async def get_del_timer(self):
-        """Get auto-delete timer"""
+        """Get delete timer"""
         try:
             if self.db is None:
                 await self.connect()
-            setting = await self.db.settings.find_one({"key": "del_timer"})
-            return int(setting["value"]) if setting else 600  # Default 10 minutes
+            setting = await self.db.settings.find_one({"setting": "del_timer"})
+            return setting.get("value", 600) if setting else 600  # Default 10 minutes
         except Exception as e:
             await rep.report(f"Error getting delete timer: {str(e)}", "error")
             return 600
 
     # HELPER METHODS
     def clean_name_for_matching(self, name):
-        """Clean name for matching"""
-        # Remove common patterns
-        name = re.sub(r'\[.*?\]', '', name)  # Remove brackets
-        name = re.sub(r'\(.*?\)', '', name)  # Remove parentheses
-        name = re.sub(r'[_\-\.]', ' ', name)  # Replace separators with spaces
-        name = re.sub(r'\s+', ' ', name)  # Multiple spaces to single
-        return name.strip()
+        """Clean anime name for better matching"""
+        import re
+        # Remove common patterns and special characters
+        cleaned = re.sub(r'\[.*?\]', '', name)  # Remove [brackets]
+        cleaned = re.sub(r'\(.*?\)', '', cleaned)  # Remove (parentheses)
+        cleaned = re.sub(r'[^\w\s]', '', cleaned)  # Remove special chars
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()  # Normalize spaces
+        return cleaned
 
 # Create database instance
 db = Database()
