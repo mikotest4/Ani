@@ -162,11 +162,15 @@ async def post_main_channel_summary(name, aniInfo, channel_details):
         # Extract episode info from name
         episode_info = extract_episode_info(name)
         
-        # Create summary caption with specific formatting
-        caption = f"<b>{name}</b>\n"
+        # Get clean anime title from aniInfo instead of raw filename
+        titles = aniInfo.adata.get("title", {})
+        clean_title = titles.get('english') or titles.get('romaji') or titles.get('native') or "Unknown Anime"
+        
+        # Create summary caption with clean title
+        caption = f"<b>{clean_title}</b>\n"
         caption += f"<b>──────────────────────────────</b>\n"
-        caption += f"<b>➤ Season - {episode_info['season']:02d}</b>\n"
-        caption += f"<b>➤ Episode - {episode_info['episode']:02d}</b>\n"
+        caption += f"<b>➤ Season - {episode_info['season']}</b>\n"
+        caption += f"<b>➤ Episode - {episode_info['episode']}</b>\n"
         caption += f"<b>➤ Quality: {episode_info['quality']}</b>\n"
         caption += f"<b>────────────────────────────</b>"
         
@@ -177,14 +181,15 @@ async def post_main_channel_summary(name, aniInfo, channel_details):
                 [InlineKeyboardButton("ᴊᴏɪɴ ɴᴏᴡ ᴛᴏ ᴡᴀᴛᴄʜ", url=channel_details['invite_link'])]
             ])
         
-        # Send summary to main channel
-        await bot.send_message(
+        # Send summary to main channel with poster
+        await bot.send_photo(
             chat_id=Var.MAIN_CHANNEL,
-            text=caption,
+            photo=await aniInfo.get_poster(),
+            caption=caption,
             reply_markup=keyboard
         )
         
-        await rep.report(f"✅ Posted summary to main channel: {name}", "info")
+        await rep.report(f"✅ Posted summary to main channel: {clean_title}", "info")
         
     except Exception as e:
         await rep.report(f"❌ Failed to post summary to main channel: {str(e)}", "error")
