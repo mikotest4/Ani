@@ -162,20 +162,28 @@ class TextEditor:
                 await rep.report(f"✅ Using custom banner for: {self.name}", "info")
                 return custom_banner
             
-            # Fallback to AniList poster
+            # Fallback to AniList poster - make sure we have loaded AniList data
+            if not self.adata:
+                await self.load_anilist()
+                
             if self.adata and self.adata.get('coverImage'):
                 poster_url = self.adata['coverImage'].get('large') or self.adata['coverImage'].get('medium')
                 if poster_url:
                     await rep.report(f"🎨 Using AniList poster for: {self.name}", "info")
                     return poster_url
             
-            # Default fallback
-            await rep.report(f"⚠️ No poster found for: {self.name}, using default", "warning")
-            return "https://via.placeholder.com/400x600/1a1a1a/ffffff?text=No+Poster"
+            # If still no poster, try banner image
+            if self.adata and self.adata.get('bannerImage'):
+                await rep.report(f"🖼️ Using AniList banner for: {self.name}", "info")
+                return self.adata['bannerImage']
+            
+            # Return None if no image available
+            await rep.report(f"⚠️ No poster found for: {self.name}", "warning")
+            return None
             
         except Exception as e:
             await rep.report(f"❌ Error getting poster: {str(e)}", "error")
-            return "https://via.placeholder.com/400x600/1a1a1a/ffffff?text=Error"
+            return None
 
     async def get_banner(self):
         """Get custom banner if available, otherwise AniList banner"""
