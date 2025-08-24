@@ -244,126 +244,74 @@ class TextEditor:
         
         return f"{title} {episode} [{quality}].mkv"
 
-    def get_episode_info(self):
-        """Get formatted episode information"""
-        info = {
-            'season': f"{self.pdata.get('season', 1):02d}",
-            'episode': f"{self.pdata.get('episode_number', 1):02d}",
-            'quality': 'Multi [Sub]',
-            'codec': 'H.264'
-        }
-        
-        # Extract quality from name
-        if '1080p' in self.name.upper():
-            info['quality'] = '1080p [Sub]'
-        elif '720p' in self.name.upper():
-            info['quality'] = '720p [Sub]'
-        elif '480p' in self.name.upper():
-            info['quality'] = '480p [Sub]'
-        elif 'HEVC' in self.name.upper():
-            info['quality'] = 'HEVC [Sub]'
-            info['codec'] = 'H.265'
-        
-        return info
-
-    def get_clean_title(self):
-        """Get clean anime title from AniList data or cleaned name"""
-        if self.adata:
-            titles = self.adata.get("title", {})
-            return titles.get('english') or titles.get('romaji') or titles.get('native') or self.clean_anime_name(self.name)
-        return self.clean_anime_name(self.name)
-
-    def extract_episode_info_from_name(self, anime_title):
-        """Extract episode, season and quality info from anime title"""
-        info = {
-            'season': '01',
-            'episode': '01',
-            'quality': 'Multi [Sub]',
-            'codec': 'H.264'
-        }
-        
-        # Extract season
-        season_match = re.search(r'[Ss](\d+)', anime_title)
-        if season_match:
-            info['season'] = season_match.group(1).zfill(2)
-        
-        # Extract episode
-        episode_patterns = [
-            r'[Ee](\d+)',
-            r'Episode[\s\-]*(\d+)',
-            r'Ep[\s\-]*(\d+)',
-            r'\s(\d+)\s',
-            r'-\s*(\d+)\s*-'
-        ]
-        
-        for pattern in episode_patterns:
-            episode_match = re.search(pattern, anime_title)
-            if episode_match:
-                info['episode'] = episode_match.group(1).zfill(2)
-                break
-        
-        # Extract quality
-        if '1080p' in anime_title.upper():
-            info['quality'] = '1080p [Sub]'
-        elif '720p' in anime_title.upper():
-            info['quality'] = '720p [Sub]'
-        elif '480p' in anime_title.upper():
-            info['quality'] = '480p [Sub]'
-        elif 'HEVC' in anime_title.upper():
-            info['quality'] = 'HEVC [Sub]'
-            info['codec'] = 'H.265'
-        
-        return info
-
     async def get_description(self):
         """Get anime description"""
-        if self.adata and self.adata.get('description'):
-            # Clean HTML tags from description
-            description = re.sub('<.*?>', '', self.adata['description'])
-            # Limit description length
-            if len(description) > 200:
-                description = description[:200] + "..."
-            return description
-        return "No description available."
+        if not self.adata or not self.adata.get('description'):
+            return "No description available."
+        
+        # Clean HTML tags from description
+        description = re.sub(r'<[^>]+>', '', self.adata['description'])
+        
+        # Truncate if too long
+        if len(description) > 300:
+            description = description[:300] + "..."
+        
+        return description
 
     async def get_studio(self):
         """Get anime studio"""
-        if self.adata and self.adata.get('studios') and self.adata['studios'].get('nodes'):
-            studios = [studio['name'] for studio in self.adata['studios']['nodes']]
-            return ", ".join(studios[:2])  # Limit to 2 studios
-        return "Unknown Studio"
+        if not self.adata or not self.adata.get('studios', {}).get('nodes'):
+            return "Unknown Studio"
+        
+        studios = [node['name'] for node in self.adata['studios']['nodes']]
+        return ", ".join(studios[:2])  # Show max 2 studios
 
     async def get_status(self):
         """Get anime status"""
-        if self.adata:
-            return self.adata.get('status', 'Unknown').replace('_', ' ').title()
-        return "Unknown"
+        if not self.adata:
+            return "Unknown"
+        
+        status = self.adata.get('status', 'Unknown')
+        status_map = {
+            'FINISHED': 'Completed',
+            'RELEASING': 'Ongoing',
+            'NOT_YET_RELEASED': 'Upcoming',
+            'CANCELLED': 'Cancelled',
+            'HIATUS': 'Hiatus'
+        }
+        
+        return status_map.get(status, status)
 
     async def get_year(self):
-        """Get anime year"""
-        if self.adata and self.adata.get('startDate') and self.adata['startDate'].get('year'):
-            return str(self.adata['startDate']['year'])
-        return "Unknown"
+        """Get anime release year"""
+        if not self.adata or not self.adata.get('startDate'):
+            return None
+        
+        return self.adata['startDate'].get('year')
 
-    async def format_summary_caption(self):
-        """Format caption for main channel summary"""
-        try:
-            # Get clean title
-            clean_title = self.get_clean_title()
-            
-            # Get episode info
-            episode_info = self.get_episode_info()
-            
-            # Create summary caption
-            caption = f"<b>{clean_title}</b>\n"
-            caption += f"<b>──────────────────────────────</b>\n"
-            caption += f"<b>➤ Season - {episode_info['season']}</b>\n"
-            caption += f"<b>➤ Episode - {episode_info['episode']}</b>\n"
-            caption += f"<b>➤ Quality: {episode_info['quality']}</b>\n"
-            caption += f"<b>────────────────────────────</b>"
-            
-            return caption
-            
-        except Exception as e:
-            await rep.report(f"Error formatting summary caption: {str(e)}", "error")
-            return f"<b>{self.name}</b>"
+    async def get_full_info(self):
+        """Get comprehensive anime info"""
+        if not self.adata:
+            return {"title": self.name, "poster": await self.get_poster()}
+        
+        titles = self.adata.get("title", {})
+        
+        return {
+            "id": self.adata.get('id'),
+            "title": {
+                "english": titles.get('english'),
+                "romaji": titles.get('romaji'),
+                "native": titles.get('native')
+            },
+            "poster": await self.get_poster(),
+            "banner": await self.get_banner(),
+            "description": await self.get_description(),
+            "episodes": self.adata.get('episodes'),
+            "duration": self.adata.get('duration'),
+            "status": await self.get_status(),
+            "genres": self.adata.get('genres', []),
+            "score": self.adata.get('averageScore'),
+            "year": await self.get_year(),
+            "studio": await self.get_studio(),
+            "episode_info": self.pdata
+        }
