@@ -1,215 +1,182 @@
-import aiosqlite
+from motor.motor_asyncio import AsyncIOMotorClient
 from datetime import datetime
 import re
 from bot.core.reporter import rep
 
 class Database:
     def __init__(self):
-        self.db_path = "database.db"
+        self.client = None
         self.db = None
 
     async def connect(self):
-        """Connect to database"""
+        """Connect to MongoDB"""
         try:
-            self.db = await aiosqlite.connect(self.db_path)
-            await self.create_tables()
-            await rep.report("Database connected successfully", "info")
+            from bot import Var
+            self.client = AsyncIOMotorClient(Var.MONGO_URI)
+            self.db = self.client.anime_bot
+            await rep.report("MongoDB connected successfully", "info")
             return True
         except Exception as e:
-            await rep.report(f"Database connection error: {str(e)}", "error")
+            await rep.report(f"MongoDB connection error: {str(e)}", "error")
             return False
 
     async def disconnect(self):
-        """Disconnect from database"""
-        if self.db:
-            await self.db.close()
-
-    async def execute(self, query, params=None):
-        """Execute database query"""
-        if not self.db:
-            await self.connect()
-        
-        try:
-            if params:
-                return await self.db.execute(query, params)
-            else:
-                return await self.db.execute(query)
-        except Exception as e:
-            await rep.report(f"Database execute error: {str(e)}", "error")
-            raise
-
-    async def commit(self):
-        """Commit database changes"""
-        if self.db:
-            await self.db.commit()
-
-    async def create_tables(self):
-        """Create all database tables"""
-        try:
-            # Users table
-            await self.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    user_id INTEGER PRIMARY KEY,
-                    username TEXT,
-                    first_name TEXT,
-                    last_name TEXT,
-                    date_joined TEXT,
-                    is_banned INTEGER DEFAULT 0
-                )
-            """)
-
-            # Anime data table
-            await self.execute("""
-                CREATE TABLE IF NOT EXISTS anime_data (
-                    anime_id INTEGER,
-                    episode_number INTEGER,
-                    quality TEXT,
-                    post_id INTEGER,
-                    date_added TEXT,
-                    PRIMARY KEY (anime_id, episode_number, quality)
-                )
-            """)
-
-            # Anime channels mapping table
-            await self.execute("""
-                CREATE TABLE IF NOT EXISTS anime_channels (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    anime_name TEXT NOT NULL,
-                    channel_id INTEGER NOT NULL,
-                    channel_title TEXT,
-                    invite_link TEXT,
-                    date_added TEXT,
-                    UNIQUE(anime_name)
-                )
-            """)
-
-            # Pending connections table
-            await self.execute("""
-                CREATE TABLE IF NOT EXISTS pending_connections (
-                    user_id INTEGER PRIMARY KEY,
-                    anime_name TEXT NOT NULL,
-                    invite_link TEXT NOT NULL,
-                    timestamp TEXT
-                )
-            """)
-
-            # Custom banners table
-            await self.execute("""
-                CREATE TABLE IF NOT EXISTS custom_banners (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    anime_name TEXT NOT NULL,
-                    banner_file_id TEXT NOT NULL,
-                    date_added TEXT NOT NULL,
-                    UNIQUE(anime_name)
-                )
-            """)
-
-            # Settings table
-            await self.execute("""
-                CREATE TABLE IF NOT EXISTS settings (
-                    key TEXT PRIMARY KEY,
-                    value TEXT
-                )
-            """)
-
-            await self.commit()
-
-        except Exception as e:
-            await rep.report(f"Error creating tables: {str(e)}", "error")
+        """Disconnect from MongoDB"""
+        if self.client:
+            self.client.close()
 
     # USER MANAGEMENT
     async def add_user(self, user_id, username=None, first_name=None, last_name=None):
         """Add or update user"""
         try:
             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            await self.execute("""
-                INSERT OR REPLACE INTO users 
-                (user_id, username, first_name, last_name, date_joined, is_banned) 
-                VALUES (?, ?, ?, ?, ?, COALESCE((SELECT is_banned FROM users WHERE user_id = ?), 0))
-            """, (user_id, username, first_name, last_name, current_time, user_id))
-            await self.commit()
+            user_data = {
+                "user_id": user_id,
+                "username": username,
+                "first_name": first_name,
+                "last_name": last_name,
+                "date_joined": current_time,
+                "is_banned": False
+            }
+            await self.db.users.update_one(
+                {"user_id": user_id},
+                {"$set": user_data},
+                upsert=True
+            )
         except Exception as e:
             await rep.report(f"Error adding user: {str(e)}", "error")
 
     async def is_banned(self, user_id):
         """Check if user is banned"""
         try:
-            result = await self.execute("SELECT is_banned FROM users WHERE user_id = ?", (user_id,))
-            row = await result.fetchone()
-            return bool(row[0]) if row else False
+            user = await self.db.users.find_one({"user_id": user_id})
+            return user.get("is_banned", False) if user else False
         except Exception as e:
             await rep.report(f"Error checking ban status: {str(e)}", "error")
             return False
 
-    async def ban_user(self, user_id):
+    async def add_ban_user(self, user_id):
         """Ban user"""
         try:
-            await self.execute("UPDATE users SET is_banned = 1 WHERE user_id = ?", (user_id,))
-            await self.commit()
+            await self.db.users.update_one(
+                {"user_id": user_id},
+                {"$set": {"is_banned": True}},
+                upsert=True
+            )
             return True
         except Exception as e:
             await rep.report(f"Error banning user: {str(e)}", "error")
             return False
 
-    async def unban_user(self, user_id):
+    async def del_ban_user(self, user_id):
         """Unban user"""
         try:
-            await self.execute("UPDATE users SET is_banned = 0 WHERE user_id = ?", (user_id,))
-            await self.commit()
+            await self.db.users.update_one(
+                {"user_id": user_id},
+                {"$set": {"is_banned": False}}
+            )
             return True
         except Exception as e:
             await rep.report(f"Error unbanning user: {str(e)}", "error")
             return False
 
+    async def get_ban_users(self):
+        """Get all banned users"""
+        try:
+            cursor = self.db.users.find({"is_banned": True})
+            banned_users = []
+            async for user in cursor:
+                banned_users.append(user["user_id"])
+            return banned_users
+        except Exception as e:
+            await rep.report(f"Error getting banned users: {str(e)}", "error")
+            return []
+
     async def full_userbase(self):
         """Get all users"""
         try:
-            result = await self.execute("SELECT user_id FROM users")
-            rows = await result.fetchall()
-            return [row[0] for row in rows]
+            cursor = self.db.users.find({})
+            users = []
+            async for user in cursor:
+                users.append(user["user_id"])
+            return users
         except Exception as e:
             await rep.report(f"Error getting userbase: {str(e)}", "error")
             return []
 
-    async def get_banned_users(self):
-        """Get all banned users"""
+    # ADMIN MANAGEMENT
+    async def add_admin(self, user_id):
+        """Add admin"""
         try:
-            result = await self.execute("SELECT user_id, username, first_name FROM users WHERE is_banned = 1")
-            rows = await result.fetchall()
-            return [{"user_id": row[0], "username": row[1], "first_name": row[2]} for row in rows]
+            await self.db.admins.update_one(
+                {"user_id": user_id},
+                {"$set": {"user_id": user_id, "date_added": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}},
+                upsert=True
+            )
+            return True
         except Exception as e:
-            await rep.report(f"Error getting banned users: {str(e)}", "error")
+            await rep.report(f"Error adding admin: {str(e)}", "error")
+            return False
+
+    async def del_admin(self, user_id):
+        """Remove admin"""
+        try:
+            result = await self.db.admins.delete_one({"user_id": user_id})
+            return result.deleted_count > 0
+        except Exception as e:
+            await rep.report(f"Error removing admin: {str(e)}", "error")
+            return False
+
+    async def get_all_admins(self):
+        """Get all admins"""
+        try:
+            cursor = self.db.admins.find({})
+            admins = []
+            async for admin in cursor:
+                admins.append(admin["user_id"])
+            return admins
+        except Exception as e:
+            await rep.report(f"Error getting admins: {str(e)}", "error")
             return []
+
+    async def is_admin(self, user_id):
+        """Check if user is admin"""
+        try:
+            admin = await self.db.admins.find_one({"user_id": user_id})
+            return admin is not None
+        except Exception as e:
+            await rep.report(f"Error checking admin status: {str(e)}", "error")
+            return False
 
     # ANIME DATA MANAGEMENT
     async def saveAnime(self, anime_id, episode_number, quality, post_id):
         """Save anime episode data"""
         try:
             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            await self.execute("""
-                INSERT OR REPLACE INTO anime_data 
-                (anime_id, episode_number, quality, post_id, date_added) 
-                VALUES (?, ?, ?, ?, ?)
-            """, (anime_id, episode_number, quality, post_id, current_time))
-            await self.commit()
+            anime_data = {
+                "anime_id": anime_id,
+                "episode_number": episode_number,
+                "quality": quality,
+                "post_id": post_id,
+                "date_added": current_time
+            }
+            await self.db.anime_data.update_one(
+                {"anime_id": anime_id, "episode_number": episode_number, "quality": quality},
+                {"$set": anime_data},
+                upsert=True
+            )
         except Exception as e:
             await rep.report(f"Error saving anime: {str(e)}", "error")
 
     async def getAnime(self, anime_id):
         """Get anime data"""
         try:
-            result = await self.execute("""
-                SELECT episode_number, quality, post_id 
-                FROM anime_data 
-                WHERE anime_id = ?
-            """, (anime_id,))
-            rows = await result.fetchall()
-            
+            cursor = self.db.anime_data.find({"anime_id": anime_id})
             anime_data = {}
-            for row in rows:
-                episode = row[0]
-                quality = row[1]
-                post_id = row[2]
+            async for record in cursor:
+                episode = record["episode_number"]
+                quality = record["quality"]
+                post_id = record["post_id"]
                 
                 if episode not in anime_data:
                     anime_data[episode] = {}
@@ -223,283 +190,84 @@ class Database:
     async def reboot(self):
         """Clear anime cache/data"""
         try:
-            await self.execute("DELETE FROM anime_data")
-            await self.commit()
+            await self.db.anime_data.delete_many({})
         except Exception as e:
             await rep.report(f"Error rebooting: {str(e)}", "error")
 
-    # CHANNEL MANAGEMENT
-    async def add_anime_channel(self, anime_name, channel_id, channel_title, invite_link=None):
-        """Add anime channel mapping"""
-        try:
-            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            await self.execute("""
-                INSERT OR REPLACE INTO anime_channels 
-                (anime_name, channel_id, channel_title, invite_link, date_added) 
-                VALUES (?, ?, ?, ?, ?)
-            """, (anime_name, channel_id, channel_title, invite_link, current_time))
-            await self.commit()
-            return True
-        except Exception as e:
-            await rep.report(f"Error adding anime channel: {str(e)}", "error")
-            return False
-
-    async def find_channel_by_anime_title(self, torrent_name):
-        """Find channel by matching anime title"""
-        try:
-            result = await self.execute("SELECT anime_name, channel_id, channel_title, invite_link FROM anime_channels")
-            rows = await result.fetchall()
-            
-            if not rows:
-                return None
-            
-            clean_torrent = self.clean_name_for_matching(torrent_name)
-            
-            for anime_name, channel_id, channel_title, invite_link in rows:
-                clean_anime = self.clean_name_for_matching(anime_name)
-                
-                if clean_anime.lower() in clean_torrent.lower() or clean_torrent.lower() in clean_anime.lower():
-                    return {
-                        'anime_name': anime_name,
-                        'channel_id': channel_id,
-                        'channel_title': channel_title,
-                        'invite_link': invite_link
-                    }
-            
-            return None
-        except Exception as e:
-            await rep.report(f"Error finding channel: {str(e)}", "error")
-            return None
-
-    async def get_all_anime_channels(self):
-        """Get all anime channel mappings"""
-        try:
-            result = await self.execute("""
-                SELECT anime_name, channel_id, channel_title, invite_link 
-                FROM anime_channels 
-                ORDER BY date_added DESC
-            """)
-            rows = await result.fetchall()
-            
-            mappings = []
-            for row in rows:
-                mappings.append({
-                    'anime_name': row[0],
-                    'channel_id': row[1],
-                    'channel_title': row[2],
-                    'invite_link': row[3]
-                })
-            
-            return mappings
-        except Exception as e:
-            await rep.report(f"Error getting anime channels: {str(e)}", "error")
-            return []
-
-    async def remove_anime_channel(self, anime_name):
-        """Remove anime channel mapping"""
-        try:
-            result = await self.execute("DELETE FROM anime_channels WHERE LOWER(anime_name) = LOWER(?)", (anime_name,))
-            await self.commit()
-            return result.rowcount > 0
-        except Exception as e:
-            await rep.report(f"Error removing anime channel: {str(e)}", "error")
-            return False
-
-    # PENDING CONNECTIONS
-    async def add_pending_connection(self, user_id, anime_name, invite_link):
-        """Add pending channel connection"""
-        try:
-            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            await self.execute("""
-                INSERT OR REPLACE INTO pending_connections 
-                (user_id, anime_name, invite_link, timestamp) 
-                VALUES (?, ?, ?, ?)
-            """, (user_id, anime_name, invite_link, current_time))
-            await self.commit()
-        except Exception as e:
-            await rep.report(f"Error adding pending connection: {str(e)}", "error")
-
-    async def get_pending_connection(self, user_id):
-        """Get pending connection for user"""
-        try:
-            result = await self.execute("""
-                SELECT anime_name, invite_link FROM pending_connections WHERE user_id = ?
-            """, (user_id,))
-            row = await result.fetchone()
-            
-            if row:
-                return {'anime_name': row[0], 'invite_link': row[1]}
-            return None
-        except Exception as e:
-            await rep.report(f"Error getting pending connection: {str(e)}", "error")
-            return None
-
-    async def remove_pending_connection(self, user_id):
-        """Remove pending connection"""
-        try:
-            await self.execute("DELETE FROM pending_connections WHERE user_id = ?", (user_id,))
-            await self.commit()
-        except Exception as e:
-            await rep.report(f"Error removing pending connection: {str(e)}", "error")
-
-    # CUSTOM BANNER MANAGEMENT
+    # CUSTOM BANNERS MANAGEMENT
     async def add_custom_banner(self, anime_name, banner_file_id):
-        """Add or update custom banner for anime"""
+        """Add custom banner"""
         try:
             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            
-            # Check if banner already exists
-            existing = await self.get_custom_banner(anime_name)
-            
-            if existing:
-                # Update existing banner
-                await self.execute("""
-                    UPDATE custom_banners 
-                    SET banner_file_id = ?, date_added = ? 
-                    WHERE LOWER(anime_name) = LOWER(?)
-                """, (banner_file_id, current_time, anime_name))
-                await self.commit()
-                return True
-            else:
-                # Insert new banner
-                await self.execute("""
-                    INSERT INTO custom_banners (anime_name, banner_file_id, date_added) 
-                    VALUES (?, ?, ?)
-                """, (anime_name, banner_file_id, current_time))
-                await self.commit()
-                return True
-                
+            banner_data = {
+                "anime_name": anime_name,
+                "banner_file_id": banner_file_id,
+                "date_added": current_time
+            }
+            await self.db.custom_banners.update_one(
+                {"anime_name": anime_name},
+                {"$set": banner_data},
+                upsert=True
+            )
+            return True
         except Exception as e:
             await rep.report(f"Error adding custom banner: {str(e)}", "error")
             return False
 
     async def get_custom_banner(self, anime_name):
-        """Get custom banner file_id for anime name"""
+        """Get custom banner for anime"""
         try:
-            result = await self.execute("""
-                SELECT banner_file_id FROM custom_banners 
-                WHERE LOWER(anime_name) = LOWER(?)
-            """, (anime_name,))
-            
-            row = await result.fetchone()
-            return row[0] if row else None
-            
+            banner = await self.db.custom_banners.find_one({"anime_name": anime_name})
+            return banner["banner_file_id"] if banner else None
         except Exception as e:
             await rep.report(f"Error getting custom banner: {str(e)}", "error")
             return None
 
-    async def get_custom_banner_by_name(self, torrent_name):
-        """Get custom banner by matching torrent name with stored anime names"""
-        try:
-            # Get all custom banners
-            result = await self.execute("SELECT anime_name, banner_file_id FROM custom_banners")
-            rows = await result.fetchall()
-            
-            if not rows:
-                return None
-            
-            # Clean the torrent name for comparison
-            clean_torrent = self.clean_name_for_matching(torrent_name)
-            
-            # Try to match with stored anime names
-            for anime_name, banner_file_id in rows:
-                clean_anime = self.clean_name_for_matching(anime_name)
-                
-                # Check for partial matches
-                if clean_anime.lower() in clean_torrent.lower() or clean_torrent.lower() in clean_anime.lower():
-                    await rep.report(f"✅ Custom banner match found: {anime_name} -> {torrent_name}", "info")
-                    return banner_file_id
-            
-            return None
-            
-        except Exception as e:
-            await rep.report(f"Error matching custom banner: {str(e)}", "error")
-            return None
-
-    async def remove_custom_banner(self, anime_name):
-        """Remove custom banner for anime"""
-        try:
-            result = await self.execute("""
-                DELETE FROM custom_banners 
-                WHERE LOWER(anime_name) = LOWER(?)
-            """, (anime_name,))
-            await self.commit()
-            
-            # Check if any row was deleted
-            return result.rowcount > 0
-            
-        except Exception as e:
-            await rep.report(f"Error removing custom banner: {str(e)}", "error")
-            return False
-
     async def get_all_custom_banners(self):
         """Get all custom banners"""
         try:
-            result = await self.execute("""
-                SELECT anime_name, banner_file_id, date_added 
-                FROM custom_banners 
-                ORDER BY date_added DESC
-            """)
-            rows = await result.fetchall()
-            
+            cursor = self.db.custom_banners.find({})
             banners = []
-            for row in rows:
+            async for banner in cursor:
                 banners.append({
-                    'anime_name': row[0],
-                    'banner_file_id': row[1],
-                    'date_added': row[2]
+                    "anime_name": banner["anime_name"],
+                    "banner_file_id": banner["banner_file_id"],
+                    "date_added": banner.get("date_added", "Unknown")
                 })
-            
             return banners
-            
         except Exception as e:
-            await rep.report(f"Error getting all custom banners: {str(e)}", "error")
+            await rep.report(f"Error getting all banners: {str(e)}", "error")
             return []
 
+    async def remove_custom_banner(self, anime_name):
+        """Remove custom banner"""
+        try:
+            result = await self.db.custom_banners.delete_one({"anime_name": anime_name})
+            return result.deleted_count > 0
+        except Exception as e:
+            await rep.report(f"Error removing banner: {str(e)}", "error")
+            return False
+
     # SETTINGS MANAGEMENT
-    async def set_del_timer(self, timer_seconds):
+    async def set_del_timer(self, duration):
         """Set auto-delete timer"""
         try:
-            await self.execute("""
-                INSERT OR REPLACE INTO settings (key, value) VALUES ('del_timer', ?)
-            """, (str(timer_seconds),))
-            await self.commit()
-            return True
+            await self.db.settings.update_one(
+                {"key": "del_timer"},
+                {"$set": {"key": "del_timer", "value": str(duration)}},
+                upsert=True
+            )
         except Exception as e:
             await rep.report(f"Error setting delete timer: {str(e)}", "error")
-            return False
 
     async def get_del_timer(self):
         """Get auto-delete timer"""
         try:
-            result = await self.execute("SELECT value FROM settings WHERE key = 'del_timer'")
-            row = await result.fetchone()
-            return int(row[0]) if row else 300  # Default 5 minutes
+            setting = await self.db.settings.find_one({"key": "del_timer"})
+            return int(setting["value"]) if setting else 600  # Default 10 minutes
         except Exception as e:
             await rep.report(f"Error getting delete timer: {str(e)}", "error")
-            return 300
+            return 600
 
-    # UTILITY METHODS
-    def clean_name_for_matching(self, name):
-        """Clean name for better matching"""
-        # Remove common release group tags
-        name = re.sub(r'\[.*?\]', '', name)
-        name = re.sub(r'\(.*?\)', '', name)
-        
-        # Remove quality and format info
-        name = re.sub(r'\b(1080p|720p|480p|HEVC|x264|x265|WEB-DL|BluRay|BDRip|DVDRip|DUAL|Multi|Sub|Dub|RAW|AAC|AC3|FLAC|DTS)\b', '', name, flags=re.IGNORECASE)
-        
-        # Remove episode/season info
-        name = re.sub(r'[Ss]\d+[Ee]\d+', '', name)
-        name = re.sub(r'[Ee]pisode?\s*\d+', '', name, flags=re.IGNORECASE)
-        name = re.sub(r'[Ee]p?\s*\d+', '', name, flags=re.IGNORECASE)
-        name = re.sub(r'Season\s*\d+', '', name, flags=re.IGNORECASE)
-        
-        # Clean up spaces and special characters
-        name = re.sub(r'[-_\.]+', ' ', name)
-        name = re.sub(r'\s+', ' ', name)
-        
-        return name.strip()
-
-# Initialize database instance
+# Create database instance
 db = Database()
