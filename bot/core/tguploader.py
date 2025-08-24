@@ -9,7 +9,7 @@ from bot.core.database import db
 from bot.core.reporter import rep
 from bot.core.text_utils import format_custom_filename
 
-class TGUploader:
+class TgUploader:
     def __init__(self, client):
         self.__client = client
 
