@@ -53,20 +53,49 @@ async def get_animes(name, torrent, force=False):
                 return
             
             await rep.report(f"New Anime Torrent Found!\n\n{name}", "info")
+            
+            # Check if anime has dedicated channel
+            dedicated_channel = await db.find_channel_by_anime_title(name)
+            target_channel = dedicated_channel if dedicated_channel else Var.MAIN_CHANNEL
+            
+            # Post to target channel (dedicated or main)
             post_msg = await bot.send_photo(
-                Var.MAIN_CHANNEL,
+                target_channel,
                 photo=await aniInfo.get_poster(),
                 caption=await aniInfo.get_caption()
             )
             
             # Send sticker after the post
             await bot.send_sticker(
-                Var.MAIN_CHANNEL,
+                target_channel,
                 sticker="CAACAgUAAxkBAAEOyQtoXB1SxAZqiP0wK7NbBBxxHwUG7gAC4BMAAp6PIFcLAAGEEdQGq4s2BA"
             )
             
+            # If posted to dedicated channel, also post summary to main channel
+            main_channel_msg = None
+            if dedicated_channel and dedicated_channel != Var.MAIN_CHANNEL:
+                try:
+                    # Get channel info for button
+                    channel_info = await bot.get_chat(dedicated_channel)
+                    channel_link = f"https://t.me/{channel_info.username}" if channel_info.username else f"https://t.me/c/{str(dedicated_channel)[4:]}"
+                    
+                    # Create summary post for main channel
+                    summary_caption = await aniInfo.get_summary_caption()
+                    summary_button = InlineKeyboardMarkup([[
+                        InlineKeyboardButton(f"📺 {channel_info.title}", url=channel_link)
+                    ]])
+                    
+                    main_channel_msg = await bot.send_photo(
+                        Var.MAIN_CHANNEL,
+                        photo=await aniInfo.get_poster(),
+                        caption=summary_caption,
+                        reply_markup=summary_button
+                    )
+                except Exception as e:
+                    await rep.report(f"Error posting to main channel: {str(e)}", "error")
+            
             await asleep(1.5)
-            stat_msg = await sendMessage(Var.MAIN_CHANNEL, f"<b>ᴅᴏᴡɴʟᴏᴀᴅɪɴɢ ᴀɴɪᴍᴇ</b>") #downloade Massage 
+            stat_msg = await sendMessage(target_channel, f"<b>ᴅᴏᴡɴʟᴏᴀᴅɪɴɢ ᴀɴɪᴍᴇ</b>") #downloade Massage 
             dl = await TorDownloader("./downloads").download(torrent, name)
             if not dl or not ospath.exists(dl):
                 await rep.report(f"<b> ғɪʟᴇ ᴅᴏᴡɴʟᴏᴀᴅ ɪɴᴄᴏᴍᴘʟᴇᴛᴇ, ᴛʀʏ ᴀɢᴀɪɴ</b>", "error")
@@ -93,7 +122,7 @@ async def get_animes(name, torrent, force=False):
                 try:
                     out_path = await FFEncoder(stat_msg, dl, filename, qual).start_encode()
                 except Exception as e:
-                    await rep.report(f"<b>ᴇʀʀᴏʀ: {e}, ᴄᴀɴᴄᴇʟʟᴇᴅ, ʀᴇᴛʀʏ ᴀɢᴀɪᴊ !</b>", "error")
+                    await rep.report(f"<b>ᴇʀʀᴏʀ: {e}, ᴄᴀɴᴄᴇʟʟᴇᴅ, ʀᴇᴛʀʏ ᴀɢᴀɪɴ !</b>", "error")
                     await stat_msg.delete()
                     ffLock.release()
                     return
