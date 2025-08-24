@@ -129,6 +129,11 @@ async def get_animes(name, torrent, force=False):
             
             await ffLock.acquire()
             btns = []
+            
+            # Extract clean anime name for uploader
+            titles = aniInfo.adata.get('title', {})
+            clean_anime_name = titles.get('english') or titles.get('romaji') or titles.get('native') or aniInfo.pdata.get("anime_title", "Unknown")
+            
             for qual in Var.QUALS:
                 filename = await aniInfo.get_upname(qual)
                 await editMessage(stat_msg, f"‣ <b>ᴀɴɪᴍᴇ ɴᴀᴍᴇ :</b><b>{name}</b>\n\n<b>ʀᴇᴀᴅʏ ᴛᴏ ᴇɴᴄᴏᴅᴇ.....</b>") # Ready to Encode...
@@ -147,7 +152,8 @@ async def get_animes(name, torrent, force=False):
                 await editMessage(stat_msg, f"<b>ʀᴇᴀᴅʏ ᴛᴏ ᴜᴘʟᴏᴀᴅ...</b>")
                 await asleep(1.5)
                 try:
-                    msg = await TgUploader(stat_msg).upload(out_path, qual)
+                    # Pass anime name to uploader for custom thumbnail detection
+                    msg = await TgUploader(stat_msg, clean_anime_name).upload(out_path, qual)
                 except Exception as e:
                     await rep.report(f"<b>ᴇʀʀᴏʀ: {e}, ᴄᴀɴᴄᴇʟʟᴇᴅ, ʀᴇᴛʀʏ ᴀɢᴀɪɴ !</b>", "error")
                     await stat_msg.delete()
