@@ -10,6 +10,7 @@ class MongoDB:
         self.__admins = self.__db.admins[Var.BOT_TOKEN.split(':')[0]]
         self.__settings = self.__db.settings[Var.BOT_TOKEN.split(':')[0]]
         self.__banned = self.__db.banned[Var.BOT_TOKEN.split(':')[0]]
+        self.__anime_channels = self.__db.anime_channels[Var.BOT_TOKEN.split(':')[0]]
 
     async def getAnime(self, ani_id):
         botset = await self.__animes.find_one({'_id': ani_id})
@@ -106,5 +107,59 @@ class MongoDB:
         """Check if user is banned"""
         banned_user = await self.__banned.find_one({'_id': user_id})
         return banned_user is not None
+
+    # Anime Channel Mapping Methods
+    async def add_anime_channel(self, anime_name, channel_id, channel_title=None):
+        """Add anime to channel mapping"""
+        await self.__anime_channels.update_one(
+            {'_id': anime_name.lower()}, 
+            {'$set': {
+                '_id': anime_name.lower(),
+                'anime_name': anime_name,
+                'channel_id': channel_id,
+                'channel_title': channel_title,
+                'created_at': await self._get_current_time()
+            }}, 
+            upsert=True
+        )
+
+    async def get_anime_channel(self, anime_name):
+        """Get channel ID for specific anime"""
+        mapping = await self.__anime_channels.find_one({'_id': anime_name.lower()})
+        return mapping['channel_id'] if mapping else None
+
+    async def find_channel_by_anime_title(self, title):
+        """Smart matching to find channel by anime title"""
+        title_lower = title.lower()
+        
+        # Direct match
+        mapping = await self.__anime_channels.find_one({'_id': title_lower})
+        if mapping:
+            return mapping['channel_id']
+        
+        # Partial match - check if any stored anime name is contained in the title
+        all_mappings = await self.__anime_channels.find({}).to_list(length=None)
+        for mapping in all_mappings:
+            stored_name = mapping['anime_name'].lower()
+            # Check if stored name is in the title or title is in stored name
+            if stored_name in title_lower or title_lower in stored_name:
+                return mapping['channel_id']
+        
+        return None
+
+    async def remove_anime_channel(self, anime_name):
+        """Remove anime channel mapping"""
+        result = await self.__anime_channels.delete_one({'_id': anime_name.lower()})
+        return result.deleted_count > 0
+
+    async def get_all_anime_channels(self):
+        """Get all anime channel mappings"""
+        mappings = await self.__anime_channels.find({}).to_list(length=None)
+        return mappings
+
+    async def _get_current_time(self):
+        """Get current timestamp"""
+        from datetime import datetime
+        return datetime.now()
 
 db = MongoDB(Var.MONGO_URI, "FZAutoAnimes")
