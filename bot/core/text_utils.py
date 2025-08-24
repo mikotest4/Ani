@@ -4,6 +4,7 @@ from random import choice
 from asyncio import sleep as asleep
 from aiohttp import ClientSession
 from anitopy import parse
+import re
 
 from bot import Var, bot
 from .database import db
@@ -19,7 +20,7 @@ CAPTION_FORMAT = """
 <b>➤ Quality: Multi [Sub] </b>
 <b>──────────────────────────── </b>
 """
-GENRES_EMOJI = {"Action": "👊", "Adventure": choice(['🪂', '🧗‍♀']), "Comedy": "🤣", "Drama": " 🎭", "Ecchi": choice(['💋', '🥵']), "Fantasy": choice(['🧞', '🧞‍♂', '🧞‍♀','🌗']), "Hentai": "🔞", "Horror": "☠", "Mahou Shoujo": "☯", "Mecha": "🤖", "Music": "🎸", "Mystery": "🔮", "Psychological": "♟", "Romance": "💞", "Sci-Fi": "🛸", "Slice of Life": choice(['☘','🍁']), "Sports": "⚽️", "Supernatural": "🫧", "Thriller": choice(['🎬', '🔪'])}
+GENRES_EMOJI = {"Action": "👊", "Adventure": choice(['🪂', '🧗‍♀']), "Comedy": "🤣", "Drama": " 🎭", "Ecchi": choice(['💋', '🥵']), "Fantasy": choice(['🧞', '🧞‍♂', '🧞‍♀','🌗']), "Hentai": "🔞", "Horror": "☠", "Mahou Shoujo": "☯", "Mecha": "🤖", "Music": "🎸", "Mystery": "🔮", "Psychological": "♟", "Romance": "💞", "Sci-Fi": "🛸", "Slice of Life": choice(['☘','🍁']), "Sports": "⚽️", "Supernatural": "🫧", "Thriller": choice(['🗡', '🗂']), "School": choice(['🎒']), "Seinen": choice(['🧠', '🤔']), "Police": choice(['👮', '🚓']), "Shounen": "👦", "Shoujo": "👧", "Harem": choice(['💗', '😍']), "Reverse Harem": "💝", "Demons": "😈", "Vampire": "🧛", "Historical": "🏺", "Magic": "🪄"}
 
 ANIME_GRAPHQL_QUERY = """
 query ($id: Int, $search: String, $seasonYear: Int) {
@@ -100,6 +101,115 @@ query ($id: Int, $search: String, $seasonYear: Int) {
   }
 }
 """
+
+def format_custom_filename(custom_format: str, original_filename: str, anime_name: str) -> str:
+    """
+    Format custom filename using variables from the original filename
+    
+    Available variables:
+    {season} - Season number (01, 02, etc.)
+    {episode} - Episode number (01, 02, etc.)
+    {title} - Clean anime title
+    {quality} - Video quality (480, 720, 1080, Hdrip)
+    {codec} - Video codec (HEVC, AV1, H.264, etc.)
+    {lang} - Audio language (Sub, Multi-Audio, Dual, etc.)
+    """
+    try:
+        # Parse the original filename to extract data
+        pdata = parse(original_filename)
+        
+        # Extract information from original filename
+        data = {
+            'title': anime_name.replace(' ', '.'),
+            'season': '01',
+            'episode': '01',
+            'quality': '1080',
+            'codec': 'H.264',
+            'lang': 'Sub'
+        }
+        
+        # Use anitopy parsed data if available
+        if pdata:
+            if pdata.get('anime_season'):
+                season_val = pdata.get('anime_season')
+                if isinstance(season_val, list):
+                    data['season'] = str(season_val[-1]).zfill(2)
+                else:
+                    data['season'] = str(season_val).zfill(2)
+            
+            if pdata.get('episode_number'):
+                data['episode'] = str(pdata.get('episode_number')).zfill(2)
+            
+            if pdata.get('video_resolution'):
+                resolution = pdata.get('video_resolution')
+                data['quality'] = resolution.replace('p', '') if 'p' in resolution else resolution
+        
+        # Fallback: Extract season number from filename
+        season_match = re.search(r'[Ss](\d{1,2})', original_filename)
+        if season_match:
+            data['season'] = season_match.group(1).zfill(2)
+        
+        # Fallback: Extract episode number from filename
+        episode_patterns = [
+            r'[Ee](\d{1,3})',  # E01, e12
+            r'[Ee]pisode[.\s]*(\d{1,3})',  # Episode 01
+            r'EP(\d{1,3})',  # EP01
+        ]
+        
+        for pattern in episode_patterns:
+            episode_match = re.search(pattern, original_filename)
+            if episode_match:
+                data['episode'] = episode_match.group(1).zfill(2)
+                break
+        
+        # Extract quality
+        quality_patterns = [
+            r'(\d{3,4}p)',  # 1080p, 720p, 480p
+            r'(HDRip|HDRIP)',  # HDRip
+        ]
+        
+        for pattern in quality_patterns:
+            quality_match = re.search(pattern, original_filename, re.IGNORECASE)
+            if quality_match:
+                quality = quality_match.group(1)
+                if quality.lower() == 'hdrip':
+                    data['quality'] = 'HDRip'
+                else:
+                    data['quality'] = quality.replace('p', '')
+                break
+        
+        # Extract codec
+        if 'HEVC' in original_filename or 'H.265' in original_filename or 'x265' in original_filename:
+            data['codec'] = 'HEVC'
+        elif 'H.264' in original_filename or 'x264' in original_filename:
+            data['codec'] = 'H.264'
+        elif 'AV1' in original_filename:
+            data['codec'] = 'AV1'
+        
+        # Extract language/audio info
+        if 'DUAL' in original_filename.upper() or 'Multi-Audio' in original_filename:
+            data['lang'] = 'Multi-Audio'
+        elif 'Multi' in original_filename and 'Sub' in original_filename:
+            data['lang'] = 'Multi-Subs'
+        
+        # Replace variables in custom format
+        formatted = custom_format
+        for key, value in data.items():
+            placeholder = "{" + key + "}"
+            formatted = formatted.replace(placeholder, str(value))
+        
+        # Clean up any remaining placeholders that weren't replaced
+        formatted = re.sub(r'\{[^}]+\}', '', formatted)
+        
+        # Clean up multiple spaces and special characters
+        formatted = re.sub(r'\s+', ' ', formatted).strip()
+        formatted = re.sub(r'[<>:"/\\|?*]', '', formatted)  # Remove invalid filename chars
+        
+        return formatted
+        
+    except Exception as e:
+        # If formatting fails, return original filename
+        return original_filename
 
 class AniLister:
     def __init__(self, anime_name: str, year: int) -> None:
