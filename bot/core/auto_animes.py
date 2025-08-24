@@ -58,12 +58,22 @@ async def get_animes(name, torrent, force=False):
             channel_details = await db.find_channel_by_anime_title(name)
             
             if channel_details:
+                # Get poster
+                poster_url = await aniInfo.get_poster()
+                
                 # Post to dedicated channel
-                post_msg = await bot.send_photo(
-                    channel_details['channel_id'],
-                    photo=await aniInfo.get_poster(),
-                    caption=await aniInfo.get_caption()
-                )
+                if poster_url:
+                    post_msg = await bot.send_photo(
+                        channel_details['channel_id'],
+                        photo=poster_url,
+                        caption=await aniInfo.get_caption()
+                    )
+                else:
+                    # Send as message if no poster available
+                    post_msg = await bot.send_message(
+                        channel_details['channel_id'],
+                        text=await aniInfo.get_caption()
+                    )
                 
                 # Send sticker to dedicated channel
                 await bot.send_sticker(
@@ -78,11 +88,20 @@ async def get_animes(name, torrent, force=False):
                 stat_msg = await sendMessage(channel_details['channel_id'], f"<b>ᴅᴏᴡɴʟᴏᴀᴅɪɴɢ ᴀɴɪᴍᴇ</b>")
             else:
                 # Original behavior - post to main channel
-                post_msg = await bot.send_photo(
-                    Var.MAIN_CHANNEL,
-                    photo=await aniInfo.get_poster(),
-                    caption=await aniInfo.get_caption()
-                )
+                poster_url = await aniInfo.get_poster()
+                
+                if poster_url:
+                    post_msg = await bot.send_photo(
+                        Var.MAIN_CHANNEL,
+                        photo=poster_url,
+                        caption=await aniInfo.get_caption()
+                    )
+                else:
+                    # Send as message if no poster available
+                    post_msg = await bot.send_message(
+                        Var.MAIN_CHANNEL,
+                        text=await aniInfo.get_caption()
+                    )
                 
                 # Send sticker after the post
                 await bot.send_sticker(
@@ -181,13 +200,23 @@ async def post_main_channel_summary(name, aniInfo, channel_details):
                 [InlineKeyboardButton("ᴊᴏɪɴ ɴᴏᴡ ᴛᴏ ᴡᴀᴛᴄʜ", url=channel_details['invite_link'])]
             ])
         
-        # Send summary to main channel with poster
-        await bot.send_photo(
-            chat_id=Var.MAIN_CHANNEL,
-            photo=await aniInfo.get_poster(),
-            caption=caption,
-            reply_markup=keyboard
-        )
+        # Get poster
+        poster_url = await aniInfo.get_poster()
+        
+        # Send summary to main channel
+        if poster_url:
+            await bot.send_photo(
+                chat_id=Var.MAIN_CHANNEL,
+                photo=poster_url,
+                caption=caption,
+                reply_markup=keyboard
+            )
+        else:
+            await bot.send_message(
+                chat_id=Var.MAIN_CHANNEL,
+                text=caption,
+                reply_markup=keyboard
+            )
         
         await rep.report(f"✅ Posted summary to main channel: {clean_title}", "info")
         
