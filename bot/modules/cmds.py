@@ -24,7 +24,7 @@ async def start_msg(client, message):
     if await db.is_banned(uid):
         return await sendMessage(message, "<b>⛔ Yᴏᴜ ᴀʀᴇ ʙᴀɴɴᴇᴅ ғʀᴏᴍ ᴜsɪɴɢ ᴛʜɪs ʙᴏᴛ.</b>")
     
-    temp = await sendMessage(message, "<b>ᴄᴏɴɴᴇᴄᴛɪɴɢ..</ib")
+    temp = await sendMessage(message, "<b>ᴄᴏɴɴᴇᴄᴛɪɴɢ..</b>")
     if not await is_fsubbed(uid):
         txt, btns = await get_fsubs(uid, txtargs)
         return await editMessage(temp, txt, InlineKeyboardMarkup(btns))
@@ -199,9 +199,9 @@ async def add_magnet_task(client, message):
     # Send confirmation message
     confirmation_msg = f"""✅ <b>ᴍᴀɢɴᴇᴛ ᴛᴀsᴋ ᴀᴅᴅᴇᴅ !</b>
 
-🔸 <b>ɴᴀᴍᴇ: {anime_name}<b>
+🔸 <b>ɴᴀᴍᴇ: {anime_name}</b>
 
-🧲 <b>ᴍᴀɢɴᴇᴛ: {magnet_link[:50]}...<b>"""
+🧲 <b>ᴍᴀɢɴᴇᴛ: {magnet_link[:50]}...</b>"""
     
     await sendMessage(message, confirmation_msg)
     
@@ -209,7 +209,7 @@ async def add_magnet_task(client, message):
     ani_task = bot_loop.create_task(get_animes(anime_name, magnet_link, True))
     await sendMessage(message, f"<b>ᴘʀᴏᴄᴇssɪɴɢ sᴛᴀʀᴛᴇᴅ !</b>\n\n• <b>ᴛᴀsᴋ ɴᴀᴍᴇ :</b> {anime_name}")
 
-# NEW CHANNEL MANAGEMENT COMMANDS WITH FORWARD MESSAGE SYSTEM
+# ENHANCED CHANNEL MANAGEMENT COMMANDS WITH FORWARD MESSAGE SYSTEM
 
 @bot.on_message(command('connectchannel') & private & admin)
 @new_task
@@ -261,6 +261,10 @@ async def handle_forwarded_message(client, message):
     if not anime_name:
         return  # User doesn't have pending connection
     
+    # Skip if waiting for invite link
+    if anime_name.startswith("INVITE:"):
+        return
+    
     try:
         # Get channel info from forwarded message
         if message.forward_from_chat:
@@ -272,20 +276,20 @@ async def handle_forwarded_message(client, message):
             test_msg = await client.send_message(channel_id, "🔗 Connection test...")
             await test_msg.delete()
             
-            # Add to database
-            await db.add_anime_channel(anime_name, channel_id, channel_title)
-            
-            # Remove pending connection
+            # Remove pending connection first
             await db.remove_pending_connection(user_id)
             
-            # Send success message
+            # Ask for invite link
             await sendMessage(message, 
-                f"🎉 <b>Channel Connected Successfully!</b>\n\n"
+                f"✅ <b>Channel Access Verified!</b>\n\n"
                 f"📺 <b>Anime:</b> {anime_name}\n"
-                f"🆔 <b>Channel:</b> {channel_title}\n"
-                f"🔗 <b>Channel ID:</b> <code>{channel_id}</code>\n\n"
-                f"ℹ️ <b>All future episodes of this anime will be posted to the connected channel automatically!</b>"
+                f"🆔 <b>Channel:</b> {channel_title}\n\n"
+                f"📎 <b>Please send the invite link for this channel:</b>\n"
+                f"<i>Example: https://t.me/+VR0qLIGlLHA4NzA1</i>"
             )
+            
+            # Store temporary data for invite link collection
+            await db.add_pending_connection(user_id, f"INVITE:{anime_name}:{channel_id}:{channel_title}")
             
         else:
             await sendMessage(message, 
@@ -303,6 +307,50 @@ async def handle_forwarded_message(client, message):
             f"• You forwarded from the correct channel"
         )
 
+@bot.on_message(private & admin & ~command(['connectchannel', 'listconnections', 'removeconnection', 'start', 'users', 'pause', 'resume', 'log', 'addlink', 'addtask', 'rtask', 'reboot', 'addmagnet']) & ~forwarded)
+@new_task
+async def handle_invite_link(client, message):
+    user_id = message.from_user.id
+    
+    # Check if user is sending invite link
+    pending = await db.get_pending_connection(user_id)
+    if pending and pending.startswith("INVITE:"):
+        try:
+            parts = pending.split(":", 3)
+            anime_name = parts[1]
+            channel_id = int(parts[2])
+            channel_title = parts[3]
+            
+            invite_link = message.text.strip()
+            
+            # Validate invite link format
+            if not invite_link.startswith("https://t.me/"):
+                return await sendMessage(message, 
+                    "<b>❌ Invalid invite link format!</b>\n\n"
+                    "<b>Please send a valid Telegram invite link:</b>\n"
+                    "<i>Example: https://t.me/+VR0qLIGlLHA4NzA1</i>"
+                )
+            
+            # Save to database with invite link
+            await db.add_anime_channel(anime_name, channel_id, channel_title, invite_link)
+            
+            # Remove pending connection
+            await db.remove_pending_connection(user_id)
+            
+            # Send success message
+            await sendMessage(message, 
+                f"🎉 <b>Channel Connected Successfully!</b>\n\n"
+                f"📺 <b>Anime:</b> {anime_name}\n"
+                f"🆔 <b>Channel:</b> {channel_title}\n"
+                f"🔗 <b>Channel ID:</b> <code>{channel_id}</code>\n"
+                f"📎 <b>Invite Link:</b> {invite_link}\n\n"
+                f"ℹ️ <b>All future episodes will post to the dedicated channel with join buttons in main channel!</b>"
+            )
+            
+        except Exception as e:
+            await db.remove_pending_connection(user_id)
+            await sendMessage(message, f"❌ <b>Error saving connection:</b> {str(e)}")
+
 @bot.on_message(command('listconnections') & private & admin)
 @new_task
 async def list_connections(client, message):
@@ -318,7 +366,11 @@ async def list_connections(client, message):
     for mapping in mappings:
         result += f"🎬 <b>{mapping['anime_name']}</b>\n"
         result += f"├ <b>Channel:</b> {mapping.get('channel_title', 'Unknown')}\n"
-        result += f"└ <b>ID:</b> <code>{mapping['channel_id']}</code>\n\n"
+        result += f"├ <b>ID:</b> <code>{mapping['channel_id']}</code>\n"
+        if mapping.get('invite_link'):
+            result += f"└ <b>Link:</b> {mapping['invite_link']}\n\n"
+        else:
+            result += f"└ <b>Link:</b> Not set\n\n"
     
     await sendMessage(message, result)
 
