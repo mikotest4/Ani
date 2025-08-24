@@ -1,6 +1,6 @@
 from asyncio import sleep as asleep, gather
 from urllib.parse import parse_qs, urlparse, unquote
-from pyrogram.filters import command, private, user
+from pyrogram.filters import command, private, user, forwarded
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from pyrogram.errors import FloodWait, MessageNotModified
 
@@ -209,51 +209,98 @@ async def add_magnet_task(client, message):
     ani_task = bot_loop.create_task(get_animes(anime_name, magnet_link, True))
     await sendMessage(message, f"<b>ᴘʀᴏᴄᴇssɪɴɢ sᴛᴀʀᴛᴇᴅ !</b>\n\n• <b>ᴛᴀsᴋ ɴᴀᴍᴇ :</b> {anime_name}")
 
-# NEW CHANNEL MANAGEMENT COMMANDS
+# NEW CHANNEL MANAGEMENT COMMANDS WITH FORWARD MESSAGE SYSTEM
 
 @bot.on_message(command('connectchannel') & private & admin)
 @new_task
 async def connect_channel(client, message):
-    args = message.text.split(maxsplit=2)
+    # Get anime name from command
+    text = message.text.strip()
+    anime_name = text.replace('/connectchannel', '').strip()
     
-    if len(args) < 3:
+    if not anime_name:
         return await sendMessage(message, 
             "<b>❌ Invalid Usage!</b>\n\n"
             "<b>📌 Usage:</b>\n"
-            "<code>/connectchannel [anime_name] [channel_id]</code>\n\n"
+            "<code>/connectchannel [anime_name]</code>\n\n"
             "<b>Example:</b>\n"
-            "<code>/connectchannel Naruto -1001234567890</code>"
+            "<code>/connectchannel Rascal Does Not Dream of Bunny Girl Senpai</code>"
         )
     
-    anime_name = args[1]
-    try:
-        channel_id = int(args[2])
-    except ValueError:
-        return await sendMessage(message, "<b>❌ Invalid channel ID! Please provide a valid numerical channel ID.</b>")
+    # Store pending connection
+    await db.add_pending_connection(message.from_user.id, anime_name)
+    
+    # Send instructions to user
+    await sendMessage(message, 
+        f"📺 <b>Setting up channel connection for:</b>\n"
+        f"<code>{anime_name}</code>\n\n"
+        f"👆 <b>Please forward any message from the channel you want to connect to this anime.</b>\n\n"
+        f"⏱️ <b>Waiting for forwarded message...</b>\n"
+        f"<i>Timeout: 30 seconds</i>"
+    )
+    
+    # Set timeout to auto-cleanup
+    async def cleanup_timeout():
+        await asleep(30)
+        if await db.get_pending_connection(message.from_user.id):
+            await db.remove_pending_connection(message.from_user.id)
+            await sendMessage(message, 
+                f"⏰ <b>Connection timeout!</b>\n\n"
+                f"Please try <code>/connectchannel {anime_name}</code> again and forward a message within 30 seconds."
+            )
+    
+    bot_loop.create_task(cleanup_timeout())
+
+@bot.on_message(forwarded & private & admin)
+@new_task
+async def handle_forwarded_message(client, message):
+    user_id = message.from_user.id
+    
+    # Check if user has pending connection
+    anime_name = await db.get_pending_connection(user_id)
+    if not anime_name:
+        return  # User doesn't have pending connection
     
     try:
-        # Test if bot can access the channel
-        channel_info = await client.get_chat(channel_id)
-        
-        # Add to database
-        await db.add_anime_channel(anime_name, channel_id, channel_info.title)
-        
-        await sendMessage(message, 
-            f"✅ <b>Channel Connected Successfully!</b>\n\n"
-            f"📺 <b>Anime:</b> {anime_name}\n"
-            f"🆔 <b>Channel:</b> {channel_info.title}\n"
-            f"🔗 <b>Channel ID:</b> <code>{channel_id}</code>\n\n"
-            f"ℹ️ <b>All future episodes of this anime will be posted to the connected channel.</b>"
-        )
-        
+        # Get channel info from forwarded message
+        if message.forward_from_chat:
+            channel = message.forward_from_chat
+            channel_id = channel.id
+            channel_title = channel.title
+            
+            # Test bot access to the channel
+            test_msg = await client.send_message(channel_id, "🔗 Connection test...")
+            await test_msg.delete()
+            
+            # Add to database
+            await db.add_anime_channel(anime_name, channel_id, channel_title)
+            
+            # Remove pending connection
+            await db.remove_pending_connection(user_id)
+            
+            # Send success message
+            await sendMessage(message, 
+                f"🎉 <b>Channel Connected Successfully!</b>\n\n"
+                f"📺 <b>Anime:</b> {anime_name}\n"
+                f"🆔 <b>Channel:</b> {channel_title}\n"
+                f"🔗 <b>Channel ID:</b> <code>{channel_id}</code>\n\n"
+                f"ℹ️ <b>All future episodes of this anime will be posted to the connected channel automatically!</b>"
+            )
+            
+        else:
+            await sendMessage(message, 
+                "<b>❌ Please forward a message from a channel, not from a user or group.</b>"
+            )
+            
     except Exception as e:
+        await db.remove_pending_connection(user_id)
         await sendMessage(message, 
             f"❌ <b>Error connecting channel:</b>\n"
             f"<code>{str(e)}</code>\n\n"
             f"<b>Make sure:</b>\n"
             f"• Bot is added to the channel\n"
-            f"• Bot has admin rights\n"
-            f"• Channel ID is correct"
+            f"• Bot has admin rights with send messages permission\n"
+            f"• You forwarded from the correct channel"
         )
 
 @bot.on_message(command('listconnections') & private & admin)
@@ -264,7 +311,7 @@ async def list_connections(client, message):
     if not mappings:
         return await sendMessage(message, 
             "<b>📋 No anime channels connected yet.</b>\n\n"
-            "<b>Use:</b> <code>/connectchannel [anime_name] [channel_id]</code> to connect channels."
+            "<b>Use:</b> <code>/connectchannel [anime_name]</code> to connect channels."
         )
     
     result = "<b>📺 Connected Anime Channels:</b>\n\n"
@@ -278,18 +325,19 @@ async def list_connections(client, message):
 @bot.on_message(command('removeconnection') & private & admin)
 @new_task
 async def remove_connection(client, message):
-    args = message.text.split(maxsplit=1)
+    # Better command parsing for anime names with spaces
+    text = message.text.strip()
+    anime_name = text.replace('/removeconnection', '').strip()
     
-    if len(args) < 2:
+    if not anime_name:
         return await sendMessage(message, 
             "<b>❌ Invalid Usage!</b>\n\n"
             "<b>📌 Usage:</b>\n"
             "<code>/removeconnection [anime_name]</code>\n\n"
             "<b>Example:</b>\n"
-            "<code>/removeconnection Naruto</code>"
+            "<code>/removeconnection Rascal Does Not Dream of Bunny Girl Senpai</code>"
         )
     
-    anime_name = args[1]
     success = await db.remove_anime_channel(anime_name)
     
     if success:
