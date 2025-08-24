@@ -19,7 +19,7 @@ CAPTION_FORMAT = """
 <b>➤ Quality: Multi [Sub] </b>
 <b>──────────────────────────── </b>
 """
-GENRES_EMOJI = {"Action": "👊", "Adventure": choice(['🪂', '🧗‍♀']), "Comedy": "🤣", "Drama": " 🎭", "Ecchi": choice(['💋', '🥵']), "Fantasy": choice(['🧞', '🧞‍♂', '🧞‍♀','🌗']), "Hentai": "🔞", "Horror": "☠", "Mahou Shoujo": "☯", "Mecha": "🤖", "Music": "🎸", "Mystery": "🔮", "Psychological": "♟", "Romance": "💞", "Sci-Fi": "🛸", "Slice of Life": choice(['☘','🍁']), "Sports": "⚽️", "Supernatural": "🫧", "Thriller": choice(['🥶', '🔥'])}
+GENRES_EMOJI = {"Action": "👊", "Adventure": choice(['🪂', '🧗‍♀']), "Comedy": "🤣", "Drama": " 🎭", "Ecchi": choice(['💋', '🥵']), "Fantasy": choice(['🧞', '🧞‍♂', '🧞‍♀','🌗']), "Hentai": "🔞", "Horror": "☠", "Mahou Shoujo": "☯", "Mecha": "🤖", "Music": "🎸", "Mystery": "🔮", "Psychological": "♟", "Romance": "💞", "Sci-Fi": "🛸", "Slice of Life": choice(['☘','🍁']), "Sports": "⚽️", "Supernatural": "🫧", "Thriller": choice(['🎬', '🔪'])}
 
 ANIME_GRAPHQL_QUERY = """
 query ($id: Int, $search: String, $seasonYear: Int) {
@@ -214,13 +214,56 @@ class TextEditor:
         
     @handle_logs
     async def get_upname(self, qual=""):
-        anime_name = self.pdata.get("anime_title")
-        codec = 'HEVC' if 'libx265' in ffargs[qual] else 'AV1' if 'libaom-av1' in ffargs[qual] else ''
-        lang = 'Multi-Audio' if 'multi-audio' in self.__name.lower() else 'Sub'
-        anime_season = str(ani_s[-1]) if (ani_s := self.pdata.get('anime_season', '01')) and isinstance(ani_s, list) else str(ani_s)
-        if anime_name and self.pdata.get("episode_number"):
-            titles = self.adata.get('title', {})
-            return f"""[S{anime_season}-{'E'+str(self.pdata.get('episode_number')) if self.pdata.get('episode_number') else ''}] {titles.get('english') or titles.get('romaji') or titles.get('native')} {'['+qual+'p]' if qual else ''} {'['+codec.upper()+'] ' if codec else ''}{'['+lang+']'} {Var.BRAND_UNAME}.mkv"""
+        try:
+            # Check for custom filename format first
+            custom_format = await db.get_custom_filename(self.__name)
+            
+            if custom_format:
+                # Parse data for custom format
+                anime_name = self.pdata.get("anime_title")
+                titles = self.adata.get('title', {})
+                clean_title = titles.get('english') or titles.get('romaji') or titles.get('native') or anime_name
+                
+                codec = 'HEVC' if 'libx265' in ffargs[qual] else 'AV1' if 'libaom-av1' in ffargs[qual] else ''
+                lang = 'Multi-Audio' if 'multi-audio' in self.__name.lower() else 'Sub'
+                anime_season = str(ani_s[-1]) if (ani_s := self.pdata.get('anime_season', '01')) and isinstance(ani_s, list) else str(ani_s or '01')
+                episode_number = str(self.pdata.get("episode_number", "01")).zfill(2)
+                
+                # Replace variables in custom format
+                formatted_name = custom_format.format(
+                    season=anime_season.zfill(2),
+                    episode=episode_number,
+                    title=clean_title,
+                    quality=qual,
+                    codec=codec.upper(),
+                    lang=lang,
+                    brand=Var.BRAND_UNAME
+                )
+                
+                await rep.report(f"✅ Using custom filename for: {anime_name}", "info")
+                return formatted_name
+            
+            # Default filename format
+            anime_name = self.pdata.get("anime_title")
+            codec = 'HEVC' if 'libx265' in ffargs[qual] else 'AV1' if 'libaom-av1' in ffargs[qual] else ''
+            lang = 'Multi-Audio' if 'multi-audio' in self.__name.lower() else 'Sub'
+            anime_season = str(ani_s[-1]) if (ani_s := self.pdata.get('anime_season', '01')) and isinstance(ani_s, list) else str(ani_s or '01')
+            
+            if anime_name and self.pdata.get("episode_number"):
+                titles = self.adata.get('title', {})
+                clean_title = titles.get('english') or titles.get('romaji') or titles.get('native') or anime_name
+                episode_number = str(self.pdata.get("episode_number")).zfill(2)
+                
+                return f"""[S{anime_season.zfill(2)}-E{episode_number}] {clean_title} {'['+qual+'p]' if qual else ''} {'['+codec.upper()+'] ' if codec else ''}{'['+lang+']'} {Var.BRAND_UNAME}.mkv"""
+            
+            # Fallback
+            return f"{anime_name or 'Unknown'} [{qual}p] {Var.BRAND_UNAME}.mkv"
+            
+        except Exception as e:
+            await rep.report(f"❌ Error generating filename: {str(e)}", "error")
+            # Fallback to simple name
+            anime_name = self.pdata.get("anime_title", "Unknown")
+            return f"{anime_name} [{qual}p] {Var.BRAND_UNAME}.mkv"
 
     @handle_logs
     async def get_caption(self):
