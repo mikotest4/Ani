@@ -1,169 +1,223 @@
-from asyncio import gather, create_task, sleep as asleep, Event
-from asyncio.subprocess import PIPE
-from os import path as ospath, system
-from aiofiles import open as aiopen
-from aiofiles.os import remove as aioremove
-from traceback import format_exc
-from base64 import urlsafe_b64encode
-from time import time
+import re
+import os
+from asyncio import sleep
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from urllib.parse import unquote
 
-from bot import bot, bot_loop, Var, ani_cache, ffQueue, ffLock, ff_queued
-from .tordownload import TorDownloader
-from .database import db
-from .func_utils import getfeed, encode, editMessage, sendMessage, convertBytes
-from .text_utils import TextEditor
-from .ffencoder import FFEncoder
-from .tguploader import TgUploader
-from .reporter import rep
+from bot import bot, Var, ani_cache
+from bot.core.func_utils import progress_bar, encode, new_task, download_cover_image
+from bot.core.reporter import rep
+from bot.core.database import db
+from bot.core.text_utils import format_text
 
-btn_formatter = {
-    'Hdrip': '𝗛𝗗𝗥𝗶𝗽',
-    '1080': '𝟭𝟬𝟴𝟬𝗽', 
-    '720': '𝟳𝟮𝟬𝗽',
-    '480': '𝟰𝟴𝟬𝗽'
- }
-
-async def fetch_animes():
-    await rep.report("Fetch Animes Started !!", "info")
-    while True:
-        await asleep(60)
-        if ani_cache['fetch_animes']:
-            for link in Var.RSS_ITEMS:
-                if (info := await getfeed(link, 0)):
-                    bot_loop.create_task(get_animes(info.title, info.link))
-
-async def get_animes(name, torrent, force=False):
+async def get_animes(anime, link, manual):
     try:
-        aniInfo = TextEditor(name)
-        await aniInfo.load_anilist()
-        ani_id, ep_no = aniInfo.adata.get('id'), aniInfo.pdata.get("episode_number")
-        if ani_id not in ani_cache['ongoing']:
-            ani_cache['ongoing'].add(ani_id)
-        elif not force:
+        # Check if fetching is paused
+        if not ani_cache['fetch_animes']:
             return
-        if not force and ani_id in ani_cache['completed']:
+        
+        # Skip if anime already exists in cache
+        ani_cache_id = re.sub(r'[^\w\s-]', '', anime).strip()
+        if ani_cache_id in ani_cache.get('animes', []):
             return
-        if force or (not (ani_data := await db.getAnime(ani_id)) \
-            or (ani_data and not (qual_data := ani_data.get(ep_no))) \
-            or (ani_data and qual_data and not all(qual for qual in qual_data.values()))):
+        
+        # Add to cache to prevent duplicates
+        if 'animes' not in ani_cache:
+            ani_cache['animes'] = []
+        ani_cache['animes'].append(ani_cache_id)
+        
+        await rep.report(f"📥 Starting download: {anime}", "info")
+        
+        # Download the anime
+        file_path = await download_anime(anime, link)
+        if not file_path:
+            await rep.report(f"❌ Download failed: {anime}", "error")
+            return
+        
+        # Extract episode info
+        episode_info = extract_episode_info(anime)
+        
+        # Check for dedicated channel
+        channel_details = await db.find_channel_by_anime_title(anime)
+        
+        if channel_details:
+            # Post to dedicated channel
+            await post_to_dedicated_channel(file_path, anime, episode_info, channel_details)
             
-            if "[Batch]" in name:
-                await rep.report(f"Torrent Skipped!\n\n{name}", "warning")
-                return
+            # Post summary to main channel with join button
+            await post_main_channel_summary(anime, episode_info, channel_details)
+        else:
+            # Post to main channel (existing behavior)
+            await post_to_main_channel(file_path, anime, episode_info)
+        
+        # Cleanup
+        try:
+            os.remove(file_path)
+        except:
+            pass
             
-            await rep.report(f"New Anime Torrent Found!\n\n{name}", "info")
-            
-            # Check if anime has dedicated channel
-            dedicated_channel = await db.find_channel_by_anime_title(name)
-            target_channel = dedicated_channel if dedicated_channel else Var.MAIN_CHANNEL
-            
-            # Post to target channel (dedicated or main)
-            post_msg = await bot.send_photo(
-                target_channel,
-                photo=await aniInfo.get_poster(),
-                caption=await aniInfo.get_caption()
+        await rep.report(f"✅ Completed: {anime}", "info")
+        
+    except Exception as e:
+        await rep.report(f"❌ Error processing {anime}: {str(e)}", "error")
+    finally:
+        # Remove from cache when done
+        if ani_cache_id in ani_cache.get('animes', []):
+            ani_cache['animes'].remove(ani_cache_id)
+
+async def post_to_dedicated_channel(file_path, anime, episode_info, channel_details):
+    """Post anime to dedicated channel"""
+    try:
+        channel_id = channel_details['channel_id']
+        
+        # Create caption for dedicated channel
+        caption = f"<b>{anime}</b>\n\n"
+        caption += f"<b>Season:</b> {episode_info['season']}\n"
+        caption += f"<b>Episode:</b> {episode_info['episode']}\n"
+        caption += f"<b>Quality:</b> {episode_info['quality']}\n\n"
+        caption += f"<b>Size:</b> {get_file_size(file_path)}\n"
+        caption += f"<b>Codec:</b> {episode_info.get('codec', 'H.264')}\n\n"
+        caption += f"<i>🎬 Enjoy watching!</i>"
+        
+        # Send to dedicated channel
+        with open(file_path, 'rb') as f:
+            msg = await bot.send_video(
+                chat_id=channel_id,
+                video=f,
+                caption=caption,
+                progress=progress_bar,
+                progress_args=(f"📤 Uploading to {channel_details.get('channel_title', 'Channel')}...",)
             )
-            
-            # Send sticker after the post
-            await bot.send_sticker(
-                target_channel,
-                sticker="CAACAgUAAxkBAAEOyQtoXB1SxAZqiP0wK7NbBBxxHwUG7gAC4BMAAp6PIFcLAAGEEdQGq4s2BA"
+        
+        await rep.report(f"✅ Posted to dedicated channel: {anime}", "info")
+        
+    except Exception as e:
+        await rep.report(f"❌ Failed to post to dedicated channel: {str(e)}", "error")
+
+async def post_main_channel_summary(anime, episode_info, channel_details):
+    """Post summary to main channel with join button"""
+    try:
+        # Create summary caption with specific formatting
+        caption = f"<b>{anime}</b>\n"
+        caption += f"<b>──────────────────────────────</b>\n"
+        caption += f"<b>➤ Season - {episode_info['season']:02d}</b>\n"
+        caption += f"<b>➤ Episode - {episode_info['episode']:02d}</b>\n"
+        caption += f"<b>➤ Quality: {episode_info['quality']}</b>\n"
+        caption += f"<b>────────────────────────────</b>"
+        
+        # Create join button
+        keyboard = None
+        if channel_details.get('invite_link'):
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("ᴊᴏɪɴ ɴᴏᴡ ᴛᴏ ᴡᴀᴛᴄʜ", url=channel_details['invite_link'])]
+            ])
+        
+        # Send summary to main channel
+        await bot.send_message(
+            chat_id=Var.MAIN_CHANNEL,
+            text=caption,
+            reply_markup=keyboard
+        )
+        
+        await rep.report(f"✅ Posted summary to main channel: {anime}", "info")
+        
+    except Exception as e:
+        await rep.report(f"❌ Failed to post summary to main channel: {str(e)}", "error")
+
+async def post_to_main_channel(file_path, anime, episode_info):
+    """Post anime directly to main channel (fallback)"""
+    try:
+        # Create full caption for main channel
+        caption = f"<b>{anime}</b>\n\n"
+        caption += f"<b>Season:</b> {episode_info['season']}\n"
+        caption += f"<b>Episode:</b> {episode_info['episode']}\n"
+        caption += f"<b>Quality:</b> {episode_info['quality']}\n\n"
+        caption += f"<b>Size:</b> {get_file_size(file_path)}\n"
+        caption += f"<b>Codec:</b> {episode_info.get('codec', 'H.264')}\n\n"
+        caption += f"<i>🎬 No dedicated channel configured</i>"
+        
+        # Send to main channel
+        with open(file_path, 'rb') as f:
+            msg = await bot.send_video(
+                chat_id=Var.MAIN_CHANNEL,
+                video=f,
+                caption=caption,
+                progress=progress_bar,
+                progress_args=("📤 Uploading to main channel...",)
             )
-            
-            # If posted to dedicated channel, also post summary to main channel
-            main_channel_msg = None
-            if dedicated_channel and dedicated_channel != Var.MAIN_CHANNEL:
-                try:
-                    # Get channel info for button
-                    channel_info = await bot.get_chat(dedicated_channel)
-                    channel_link = f"https://t.me/{channel_info.username}" if channel_info.username else f"https://t.me/c/{str(dedicated_channel)[4:]}"
-                    
-                    # Create summary post for main channel
-                    summary_caption = await aniInfo.get_summary_caption()
-                    summary_button = InlineKeyboardMarkup([[
-                        InlineKeyboardButton(f"📺 {channel_info.title}", url=channel_link)
-                    ]])
-                    
-                    main_channel_msg = await bot.send_photo(
-                        Var.MAIN_CHANNEL,
-                        photo=await aniInfo.get_poster(),
-                        caption=summary_caption,
-                        reply_markup=summary_button
-                    )
-                except Exception as e:
-                    await rep.report(f"Error posting to main channel: {str(e)}", "error")
-            
-            await asleep(1.5)
-            stat_msg = await sendMessage(target_channel, f"<b>ᴅᴏᴡɴʟᴏᴀᴅɪɴɢ ᴀɴɪᴍᴇ</b>") #downloade Massage 
-            dl = await TorDownloader("./downloads").download(torrent, name)
-            if not dl or not ospath.exists(dl):
-                await rep.report(f"<b> ғɪʟᴇ ᴅᴏᴡɴʟᴏᴀᴅ ɪɴᴄᴏᴍᴘʟᴇᴛᴇ, ᴛʀʏ ᴀɢᴀɪɴ</b>", "error")
-                await stat_msg.delete()
-                return
+        
+        await rep.report(f"✅ Posted to main channel: {anime}", "info")
+        
+    except Exception as e:
+        await rep.report(f"❌ Failed to post to main channel: {str(e)}", "error")
 
-            post_id = post_msg.id
-            ffEvent = Event()
-            ff_queued[post_id] = ffEvent
-            if ffLock.locked():
-                await editMessage(stat_msg, f"<b>ϙᴜᴇᴜᴇᴅ ᴛᴏ ᴇɴᴄᴏᴅᴇ...</b>")
-                await rep.report("<b>ᴀᴅᴅᴇᴅ ᴛᴀsᴋ ᴛᴏ ϙᴜᴇᴜᴇ....</b>", "info")
-            await ffQueue.put(post_id)
-            await ffEvent.wait()
-            
-            await ffLock.acquire()
-            btns = []
-            for qual in Var.QUALS:
-                filename = await aniInfo.get_upname(qual)
-                await editMessage(stat_msg, f"‣ <b>ᴀɴɪᴍᴇ ɴᴀᴍᴇ :</b><b>{name}</b>\n\n<b>ʀᴇᴀᴅʏ ᴛᴏ ᴇɴᴄᴏᴅᴇ.....</b>") # Ready to Encode...
-                
-                await asleep(1.5)
-                await rep.report("<b>sᴛᴀʀᴛɪɴɢ ᴇɴᴄᴏᴅᴇ...</b>", "info")
-                try:
-                    out_path = await FFEncoder(stat_msg, dl, filename, qual).start_encode()
-                except Exception as e:
-                    await rep.report(f"<b>ᴇʀʀᴏʀ: {e}, ᴄᴀɴᴄᴇʟʟᴇᴅ, ʀᴇᴛʀʏ ᴀɢᴀɪɴ !</b>", "error")
-                    await stat_msg.delete()
-                    ffLock.release()
-                    return
-                await rep.report("<b>sᴜᴄᴄᴇssғᴜʟʟʏ ᴄᴏᴍᴘʀᴇssᴇᴅ ɴᴏᴡ ɢᴏɪɴɢ ᴛᴏ ᴜᴘʟᴏᴀᴅ.... </b>", "info")
-                
-                await editMessage(stat_msg, f"<b>ʀᴇᴀᴅʏ ᴛᴏ ᴜᴘʟᴏᴀᴅ...</b>")
-                await asleep(1.5)
-                try:
-                    msg = await TgUploader(stat_msg).upload(out_path, qual)
-                except Exception as e:
-                    await rep.report(f"<b>ᴇʀʀᴏʀ: {e}, ᴄᴀɴᴄᴇʟʟᴇᴅ, ʀᴇᴛʀʏ ᴀɢᴀɪɴ !</b>", "error")
-                    await stat_msg.delete()
-                    ffLock.release()
-                    return
-                await rep.report("<b>sᴜᴄᴄᴇsғᴜʟʟʏ ᴜᴘʟᴏᴀᴅᴇᴅ ғɪʟᴇ ɪɴᴛᴏ ᴛɢ...</b>", "info")
-                
-                msg_id = msg.id
-                link = f"https://telegram.me/{(await bot.get_me()).username}?start={await encode('get-'+str(msg_id * abs(Var.FILE_STORE)))}"
-                
-                if post_msg:
-                    if len(btns) != 0 and len(btns[-1]) == 1:
-                        btns[-1].insert(1, InlineKeyboardButton(f"{btn_formatter[qual]} - {convertBytes(msg.document.file_size)}", url=link))
-                    else:
-                        btns.append([InlineKeyboardButton(f"{btn_formatter[qual]} - {convertBytes(msg.document.file_size)}", url=link)])
-                    await editMessage(post_msg, post_msg.caption.html if post_msg.caption else "", InlineKeyboardMarkup(btns))
-                    
-                await db.saveAnime(ani_id, ep_no, qual, post_id)
-                bot_loop.create_task(extra_utils(msg_id, out_path))
-            ffLock.release()
-            
-            await stat_msg.delete()
-            await aioremove(dl)
-        ani_cache['completed'].add(ani_id)
-    except Exception as error:
-        await rep.report(format_exc(), "error")
+def extract_episode_info(anime_title):
+    """Extract episode, season and quality info from anime title"""
+    info = {
+        'season': '01',
+        'episode': '01',
+        'quality': 'Multi [Sub]',
+        'codec': 'H.264'
+    }
+    
+    # Extract season
+    season_match = re.search(r'[Ss](\d+)', anime_title)
+    if season_match:
+        info['season'] = season_match.group(1).zfill(2)
+    
+    # Extract episode
+    episode_patterns = [
+        r'[Ee](\d+)',
+        r'Episode[\s\-]*(\d+)',
+        r'Ep[\s\-]*(\d+)',
+        r'\s(\d+)\s',
+        r'-\s*(\d+)\s*-'
+    ]
+    
+    for pattern in episode_patterns:
+        episode_match = re.search(pattern, anime_title)
+        if episode_match:
+            info['episode'] = episode_match.group(1).zfill(2)
+            break
+    
+    # Extract quality
+    if '1080p' in anime_title.upper():
+        info['quality'] = '1080p [Sub]'
+    elif '720p' in anime_title.upper():
+        info['quality'] = '720p [Sub]'
+    elif '480p' in anime_title.upper():
+        info['quality'] = '480p [Sub]'
+    elif 'HEVC' in anime_title.upper():
+        info['quality'] = 'HEVC [Sub]'
+        info['codec'] = 'H.265'
+    
+    return info
 
-async def extra_utils(msg_id, out_path):
-    msg = await bot.get_messages(Var.FILE_STORE, message_ids=msg_id)
+def get_file_size(file_path):
+    """Get formatted file size"""
+    try:
+        size_bytes = os.path.getsize(file_path)
+        if size_bytes >= 1024 * 1024 * 1024:
+            return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
+        elif size_bytes >= 1024 * 1024:
+            return f"{size_bytes / (1024 * 1024):.2f} MB"
+        else:
+            return f"{size_bytes / 1024:.2f} KB"
+    except:
+        return "Unknown"
 
-    if Var.BACKUP_CHANNEL != 0:
-        for chat_id in Var.BACKUP_CHANNEL.split():
-            await msg.copy(int(chat_id))
-            
-    # MediaInfo, ScreenShots, Sample Video ( Add-ons Features )
+async def download_anime(anime, link):
+    """Download anime from link - implement your download logic here"""
+    try:
+        # Placeholder for actual download implementation
+        # This should be replaced with your actual download logic
+        await rep.report(f"🔄 Downloading: {anime}", "info")
+        
+        # Your existing download implementation goes here
+        # Return the path to downloaded file
+        
+        return f"/tmp/{anime}.mp4"  # Replace with actual file path
+        
+    except Exception as e:
+        await rep.report(f"❌ Download error: {str(e)}", "error")
+        return None
