@@ -57,7 +57,7 @@ async def start_msg(client, message):
         arg = (await decode(txtargs[1])).split('-')
     except Exception as e:
         await rep.report(f"User : {uid} | Error : {str(e)}", "error")
-        await editMessage(temp, "<b>ɪɴᴘᴜᴛ ʟɪɴᴋ ᴄᴏᴅᴇ �ᴇᴄᴏᴅᴇ ғᴀɪʟᴇᴅ !</b>")
+        await editMessage(temp, "<b>ɪɴᴘᴜᴛ ʟɪɴᴋ ᴄᴏᴅᴇ ᴅᴇᴄᴏᴅᴇ ғᴀɪʟᴇᴅ !</b>")
         return
     if len(arg) == 2 and arg[0] == 'get':
         try:
@@ -208,3 +208,98 @@ async def add_magnet_task(client, message):
     # Start processing the anime
     ani_task = bot_loop.create_task(get_animes(anime_name, magnet_link, True))
     await sendMessage(message, f"<b>ᴘʀᴏᴄᴇssɪɴɢ sᴛᴀʀᴛᴇᴅ !</b>\n\n• <b>ᴛᴀsᴋ ɴᴀᴍᴇ :</b> {anime_name}")
+
+# NEW CHANNEL MANAGEMENT COMMANDS
+
+@bot.on_message(command('connectchannel') & private & admin)
+@new_task
+async def connect_channel(client, message):
+    args = message.text.split(maxsplit=2)
+    
+    if len(args) < 3:
+        return await sendMessage(message, 
+            "<b>❌ Invalid Usage!</b>\n\n"
+            "<b>📌 Usage:</b>\n"
+            "<code>/connectchannel [anime_name] [channel_id]</code>\n\n"
+            "<b>Example:</b>\n"
+            "<code>/connectchannel Naruto -1001234567890</code>"
+        )
+    
+    anime_name = args[1]
+    try:
+        channel_id = int(args[2])
+    except ValueError:
+        return await sendMessage(message, "<b>❌ Invalid channel ID! Please provide a valid numerical channel ID.</b>")
+    
+    try:
+        # Test if bot can access the channel
+        channel_info = await client.get_chat(channel_id)
+        
+        # Add to database
+        await db.add_anime_channel(anime_name, channel_id, channel_info.title)
+        
+        await sendMessage(message, 
+            f"✅ <b>Channel Connected Successfully!</b>\n\n"
+            f"📺 <b>Anime:</b> {anime_name}\n"
+            f"🆔 <b>Channel:</b> {channel_info.title}\n"
+            f"🔗 <b>Channel ID:</b> <code>{channel_id}</code>\n\n"
+            f"ℹ️ <b>All future episodes of this anime will be posted to the connected channel.</b>"
+        )
+        
+    except Exception as e:
+        await sendMessage(message, 
+            f"❌ <b>Error connecting channel:</b>\n"
+            f"<code>{str(e)}</code>\n\n"
+            f"<b>Make sure:</b>\n"
+            f"• Bot is added to the channel\n"
+            f"• Bot has admin rights\n"
+            f"• Channel ID is correct"
+        )
+
+@bot.on_message(command('listconnections') & private & admin)
+@new_task
+async def list_connections(client, message):
+    mappings = await db.get_all_anime_channels()
+    
+    if not mappings:
+        return await sendMessage(message, 
+            "<b>📋 No anime channels connected yet.</b>\n\n"
+            "<b>Use:</b> <code>/connectchannel [anime_name] [channel_id]</code> to connect channels."
+        )
+    
+    result = "<b>📺 Connected Anime Channels:</b>\n\n"
+    for mapping in mappings:
+        result += f"🎬 <b>{mapping['anime_name']}</b>\n"
+        result += f"├ <b>Channel:</b> {mapping.get('channel_title', 'Unknown')}\n"
+        result += f"└ <b>ID:</b> <code>{mapping['channel_id']}</code>\n\n"
+    
+    await sendMessage(message, result)
+
+@bot.on_message(command('removeconnection') & private & admin)
+@new_task
+async def remove_connection(client, message):
+    args = message.text.split(maxsplit=1)
+    
+    if len(args) < 2:
+        return await sendMessage(message, 
+            "<b>❌ Invalid Usage!</b>\n\n"
+            "<b>📌 Usage:</b>\n"
+            "<code>/removeconnection [anime_name]</code>\n\n"
+            "<b>Example:</b>\n"
+            "<code>/removeconnection Naruto</code>"
+        )
+    
+    anime_name = args[1]
+    success = await db.remove_anime_channel(anime_name)
+    
+    if success:
+        await sendMessage(message, 
+            f"✅ <b>Connection Removed!</b>\n\n"
+            f"📺 <b>Anime:</b> {anime_name}\n"
+            f"ℹ️ <b>Future episodes will now post to main channel.</b>"
+        )
+    else:
+        await sendMessage(message, 
+            f"❌ <b>No connection found for:</b> {anime_name}\n\n"
+            f"<b>Use:</b> <code>/listconnections</code> to see all connections."
+        )
