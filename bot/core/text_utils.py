@@ -18,7 +18,17 @@ CAPTION_FORMAT = """
 <b>➤ Quality: Multi [Sub] </b>
 <b>──────────────────────────── </b>
 """
-GENRES_EMOJI = {"Action": "👊", "Adventure": choice(['🪂', '🧗‍♀']), "Comedy": "🤣", "Drama": " 🎭", "Ecchi": choice(['💋', '🥵']), "Fantasy": choice(['🧞', '🧞‍♂', '🧞‍♀','🌗']), "Hentai": "🔞", "Horror": "☠", "Mahou Shoujo": "☯", "Mecha": "🤖", "Music": "🎸", "Mystery": "🔮", "Psychological": "♟", "Romance": "💞", "Sci-Fi": "🛸", "Slice of Life": choice(['☘','🍁']), "Sports": "⚽️", "Supernatural": "🫧", "Thriller": choice(['🥶', '🔪','🤯'])}
+
+SUMMARY_CAPTION_FORMAT = """
+🎬 <b>{title}</b>
+────────────────────────────
+➤ Season - {season}
+➤ Episode - {ep_no}
+➤ Quality: Multi [Sub]
+────────────────────────────
+"""
+
+GENRES_EMOJI = {"Action": "👊", "Adventure": choice(['🪂', '🧗‍♀']), "Comedy": "🤣", "Drama": " 🎭", "Ecchi": choice(['💋', '🥵']), "Fantasy": choice(['🧞', '🧞‍♂', '🧞‍♀','🌗']), "Hentai": "🔞", "Horror": "☠", "Mahou Shoujo": "☯", "Mecha": "🤖", "Music": "🎸", "Mystery": "🔮", "Psychological": "♟", "Romance": "💞", "Sci-Fi": "🛸", "Slice of Life": choice(['☘','🍁']), "Sports": "⚽️", "Supernatural": "🫧", "Thriller": choice(['🔪', '⚡']), "Yaoi": "💙", "Yuri": "💖"}
 
 ANIME_GRAPHQL_QUERY = """
 query ($id: Int, $search: String, $seasonYear: Int) {
@@ -206,7 +216,7 @@ class TextEditor:
         titles = self.adata.get("title", {})
         
         return CAPTION_FORMAT.format(
-                title=titles.get('english') or titles.get('romaji') or title.get('native'),
+                title=titles.get('english') or titles.get('romaji') or titles.get('native'),
                 form=self.adata.get("format") or "N/A",
                 genres=", ".join(f"{GENRES_EMOJI[x]} #{x.replace(' ', '_').replace('-', '_')}" for x in (self.adata.get('genres') or [])),
                 avg_score=f"{sc}%" if (sc := self.adata.get('averageScore')) else "N/A",
@@ -218,3 +228,19 @@ class TextEditor:
                 ep_no=self.pdata.get("episode_number"),
                 cred=Var.BRAND_UNAME,
             )
+
+    @handle_logs
+    async def get_summary_caption(self):
+        """Get summary caption for main channel posts"""
+        titles = self.adata.get("title", {})
+        anime_season = str(ani_s[-1]) if (ani_s := self.pdata.get('anime_season', '01')) and isinstance(ani_s, list) else str(ani_s or '01')
+        
+        # Determine language based on filename
+        lang = 'Dub' if 'dub' in self.__name.lower() or 'dual' in self.__name.lower() else 'Sub'
+        
+        return SUMMARY_CAPTION_FORMAT.format(
+            title=titles.get('english') or titles.get('romaji') or titles.get('native') or "Unknown Anime",
+            season=anime_season.zfill(2),  # Pad with zero if needed
+            ep_no=str(self.pdata.get("episode_number", "??")).zfill(2),
+            lang=lang
+        )
